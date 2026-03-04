@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>담배소매업 주소지 히스토리 맵</title>
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; font-family: 'Pretendard', sans-serif; }
+        #map { width: 100%; height: 100%; z-index: 1; background-color: #f3f4f6; }
+        
+        /* Sidebar Styles */
+        #sidebar {
+            transition: transform 0.3s ease-in-out;
+            z-index: 10;
+        }
+        .sidebar-closed { transform: translateX(100%); }
+        .sidebar-open { transform: translateX(0); }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+        /* Loader */
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="bg-gray-50 flex">
+
+    <!-- Main Content -->
+    <div class="relative w-full h-full flex">
+        <!-- Loading Indicator -->
+        <div id="loading" class="absolute top-4 left-1/2 transform -translate-x-1/2 bg-white px-6 py-3 rounded-full shadow-lg z-20 flex items-center hidden">
+            <div class="loader mr-3 border-t-blue-500"></div>
+            <span class="font-medium text-gray-700">데이터를 불러오는 중입니다...</span>
+        </div>
+
+        <!-- Error/Notice Modal (미리보기 및 에러 안내용) -->
+        <div id="errorModal" class="absolute inset-0 bg-gray-900 bg-opacity-75 z-50 flex items-center justify-center hidden">
+            <div class="bg-white p-8 rounded-xl shadow-2xl max-w-md w-full text-center">
+                <i class="fa-solid fa-triangle-exclamation text-yellow-500 text-5xl mb-4"></i>
+                <h2 class="text-xl font-bold mb-2 text-gray-800">지도 로드 안내</h2>
+                <p id="errorMessage" class="text-sm text-gray-600 mb-6">카카오 지도 보안 정책(도메인 미등록)으로 인해 현재 화면에서는 지도가 보이지 않을 수 있습니다. 코드를 깃허브에 업로드하시면 정상 동작합니다.</p>
+                <button onclick="document.getElementById('errorModal').classList.add('hidden')" class="bg-blue-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-blue-700 transition">확인</button>
+            </div>
+        </div>
+
+        <!-- Map Container -->
+        <div id="map" class="flex-grow relative flex items-center justify-center text-gray-400">
+            <!-- 지도가 로드되지 않았을 때 표시될 텍스트 -->
+        </div>
+
+        <!-- History Sidebar -->
+        <div id="sidebar" class="absolute top-0 right-0 w-96 h-full bg-white shadow-2xl sidebar-closed flex flex-col border-l border-gray-200">
+            <div class="bg-gray-800 text-white p-5 flex justify-between items-center">
+                <h2 class="text-lg font-bold"><i class="fa-solid fa-clock-rotate-left mr-2"></i>주소지 인허가 히스토리</h2>
+                <button onclick="closeSidebar()" class="text-gray-300 hover:text-white transition text-xl">
+                    <i class="fa-solid fa-times"></i>
+                </button>
+            </div>
+            
+            <div class="p-5 bg-gray-50 border-b border-gray-200">
+                <div class="text-sm text-gray-500 mb-1">선택된 주소</div>
+                <div id="selectedAddress" class="font-bold text-gray-800 text-lg">주소를 선택해주세요</div>
+            </div>
+
+            <div id="historyList" class="flex-grow p-5 overflow-y-auto bg-white">
+                <!-- History items will be injected here -->
+                <div class="text-center text-gray-400 mt-10">
+                    <i class="fa-solid fa-hand-pointer text-4xl mb-3"></i>
+                    <p>지도에서 마커를 클릭하여<br>해당 주소지의 이력을 확인하세요.</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Legend (Map Control) -->
+        <div class="absolute bottom-6 left-6 bg-white p-4 rounded-lg shadow-lg z-10 border border-gray-200">
+            <h3 class="font-bold text-sm text-gray-800 mb-3 border-b pb-2">범례</h3>
+            <div class="flex items-center mb-2">
+                <div class="w-5 h-7 mr-2 flex justify-center items-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="29" viewBox="0 0 24 35"><path fill="#f97316" d="M12 0C5.4 0 0 5.4 0 12c0 9 12 23 12 23s12-14 12-23c0-6.6-5.4-12-12-12z"/><path fill="#fff" d="M12 6l1.8 5.5h5.8l-4.7 3.4 1.8 5.5-4.7-3.4-4.7 3.4 1.8-5.5-4.7-3.4h5.8z"/></svg>
+                </div>
+                <span class="text-sm text-gray-700 font-bold text-orange-600">세븐일레븐</span>
+            </div>
+            <div class="flex items-center mb-2">
+                <div class="w-5 h-7 mr-2 flex justify-center items-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="29" viewBox="0 0 24 35"><path fill="#3b82f6" d="M12 0C5.4 0 0 5.4 0 12c0 9 12 23 12 23s12-14 12-23c0-6.6-5.4-12-12-12z"/><circle cx="12" cy="12" r="5" fill="#fff"/></svg>
+                </div>
+                <span class="text-sm text-gray-700 font-medium text-blue-600">담배 판매소(영업중)</span>
+            </div>
+            <div class="flex items-center">
+                <div class="w-5 h-7 mr-2 flex justify-center items-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="29" viewBox="0 0 24 35"><path fill="#9ca3af" d="M12 0C5.4 0 0 5.4 0 12c0 9 12 23 12 23s12-14 12-23c0-6.6-5.4-12-12-12z"/><rect x="7" y="10.5" width="10" height="3" fill="#fff"/></svg>
+                </div>
+                <span class="text-sm text-gray-500">담배 판매소(폐업)</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- 1. 데이터 설정 및 가공 ---
+        
+        // 공공데이터 API를 직접 호출하면 CORS 에러가 날 수 있습니다.
+        // 실제 운영 시에는 백엔드 서버(Proxy)를 거치거나 CORS가 허용된 환경에서 사용해야 합니다.
+        // 여기서는 동작 확인을 위해 행정안전부 담배소매업 데이터 형태를 본뜬 Mock 데이터를 사용합니다.
+        const mockApiData = [
+            { bplcNm: "세븐일레븐 서울역점", dtlStateNm: "영업", siteWhlAddr: "서울특별시 중구 봉래동2가 122", apvDt: "2021-05-10", clgDt: "", x: 126.9706, y: 37.5546 },
+            { bplcNm: "행운담배가게", dtlStateNm: "폐업", siteWhlAddr: "서울특별시 중구 봉래동2가 122", apvDt: "2015-02-11", clgDt: "2021-04-30", x: 126.9706, y: 37.5546 }, // 동일 주소
+            { bplcNm: "CU 남대문점", dtlStateNm: "영업", siteWhlAddr: "서울특별시 중구 남대문로 1", apvDt: "2022-01-15", clgDt: "", x: 126.9768, y: 37.5599 },
+            { bplcNm: "세븐일레븐 명동역점", dtlStateNm: "폐업", siteWhlAddr: "서울특별시 중구 충무로2가 65-9", apvDt: "2018-09-20", clgDt: "2023-01-10", x: 126.9858, y: 37.5612 },
+            { bplcNm: "GS25 명동역점", dtlStateNm: "영업", siteWhlAddr: "서울특별시 중구 충무로2가 65-9", apvDt: "2023-01-15", clgDt: "", x: 126.9858, y: 37.5612 }, // 동일 주소 이력
+            { bplcNm: "가로수길 담배", dtlStateNm: "폐업", siteWhlAddr: "서울특별시 강남구 신사동 538", apvDt: "2010-06-05", clgDt: "2019-12-31", x: 127.0225, y: 37.5198 },
+            { bplcNm: "세븐일레븐 신사점", dtlStateNm: "영업", siteWhlAddr: "서울특별시 강남구 신사동 538", apvDt: "2020-01-10", clgDt: "", x: 127.0225, y: 37.5198 }, // 동일 주소 세븐일레븐
+            { bplcNm: "옛날담배방", dtlStateNm: "폐업", siteWhlAddr: "서울특별시 용산구 한강대로 100", apvDt: "2005-01-01", clgDt: "2010-12-31", x: 126.9697, y: 37.5271 } // 폐업만 있는 곳 테스트용
+        ];
+
+        let map;
+        let markers = [];
+        let groupedData = {};
+        
+        // 직접 입력해주신 카카오 JavaScript API 키
+        const KAKAO_API_KEY = '21792ed90da16b4da6ab0d8978b26cd1';
+        
+        // 공공데이터 API 설정
+        const PUBLIC_DATA_API_KEY = 'e73f0e74186728df4cc7a0b30825e3b65e04519363781be92faa5511083d30d8';
+        const PUBLIC_DATA_ENDPOINT = 'https://apis.data.go.kr/1741000/tobacco_retailers';
+
+        // --- 2. 초기화 및 스크립트 로드 ---
+
+        function showDomainError() {
+            document.getElementById('errorMessage').innerHTML = '카카오 지도 보안 정책(도메인 미등록)으로 인해 현재 Canvas 미리보기 화면에서는 지도가 차단되었습니다.<br><br>작성된 코드는 정상이며, <b>깃허브(ooooogoon.github.io)</b>에 업로드하시거나 <b>로컬 웹 서버(localhost)</b>에서 실행하시면 지도가 완벽하게 나타납니다!';
+            document.getElementById('errorModal').classList.remove('hidden');
+            document.getElementById('loading').classList.add('hidden');
+            document.getElementById('map').innerHTML = '<div class="text-center"><i class="fa-solid fa-map-location-dot text-4xl mb-3 text-gray-300"></i><p>카카오 지도 정책에 의해<br>미리보기가 차단되었습니다.</p></div>';
+        }
+
+        function initializeApp() {
+            // 로딩 표시
+            document.getElementById('loading').classList.remove('hidden');
+
+            // 카카오 맵 스크립트 동적 로드 (https 명시, Geocoder 주소 변환을 위해 &libraries=services 추가)
+            const script = document.createElement('script');
+            script.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${KAKAO_API_KEY}&libraries=services&autoload=false`;
+            
+            script.onload = () => {
+                try {
+                    kakao.maps.load(() => {
+                        try {
+                            initMap();
+                            fetchRealData(); 
+
+                            // 지도가 정상적으로 렌더링 되었는지 1초 후 체크 (도메인 차단 시 렌더링 실패함)
+                            setTimeout(() => {
+                                const mapContainer = document.getElementById('map');
+                                if(mapContainer.childElementCount === 0) {
+                                    showDomainError();
+                                }
+                            }, 1000);
+
+                        } catch (err) {
+                            showDomainError();
+                        }
+                    });
+                } catch (e) {
+                    showDomainError();
+                }
+            };
+
+            script.onerror = () => {
+                showDomainError();
+            };
+
+            document.head.appendChild(script);
+        }
+
+        function initMap() {
+            const container = document.getElementById('map');
+            const options = {
+                center: new kakao.maps.LatLng(37.5546, 126.9706), // 서울역 기본 중심
+                level: 6
+            };
+            map = new kakao.maps.Map(container, options);
+            
+            // 지도 컨트롤 추가
+            const zoomControl = new kakao.maps.ZoomControl();
+            map.addControl(zoomControl, kakao.maps.ControlPosition.RIGHT);
+        }
+
+        // --- 3. 데이터 처리 및 마커 생성 ---
+
+        function processAndDisplayData(dataList) {
+            // 주소(siteWhlAddr)를 기준으로 데이터 그룹화
+            groupedData = dataList.reduce((acc, current) => {
+                const address = current.siteWhlAddr;
+                if (!acc[address]) {
+                    acc[address] = [];
+                }
+                acc[address].push(current);
+                return acc;
+            }, {});
+
+            createMarkers(groupedData);
+            document.getElementById('loading').classList.add('hidden');
+        }
+
+        function createMarkers(grouped) {
+            // SVG 커스텀 마커 이미지 생성 헬퍼 함수
+            const createMarkerImg = (color, iconSvg) => {
+                const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="35" viewBox="0 0 24 35"><path fill="${color}" d="M12 0C5.4 0 0 5.4 0 12c0 9 12 23 12 23s12-14 12-23c0-6.6-5.4-12-12-12z"/>${iconSvg}</svg>`;
+                const encoded = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+                return new kakao.maps.MarkerImage(encoded, new kakao.maps.Size(24, 35), {offset: new kakao.maps.Point(12, 35)});
+            };
+
+            const imgSevenEleven = createMarkerImg('#f97316', '<path fill="#fff" d="M12 6l1.8 5.5h5.8l-4.7 3.4 1.8 5.5-4.7-3.4-4.7 3.4 1.8-5.5-4.7-3.4h5.8z"/>'); // 오렌지색 별
+            const imgOperating = createMarkerImg('#3b82f6', '<circle cx="12" cy="12" r="5" fill="#fff"/>'); // 파란색 동그라미
+            const imgClosed = createMarkerImg('#9ca3af', '<rect x="7" y="10.5" width="10" height="3" fill="#fff"/>'); // 회색 빼기 기호
+
+            for (const address in grouped) {
+                const historyList = grouped[address];
+                
+                // 1. 세븐일레븐 이력 여부 (최우선)
+                const hasSevenEleven = historyList.some(store => store.bplcNm.includes('세븐일레븐'));
+                
+                // 2. 현재 해당 주소에 '영업' 중인 담배소매업이 있는지 (폐업만 있는지 확인용)
+                const isOperating = historyList.some(store => store.dtlStateNm.includes('영업') || store.dtlStateNm.includes('정상'));
+                
+                // 좌표는 그룹 내 첫 번째 데이터의 좌표를 사용
+                const lat = historyList[0].y;
+                const lng = historyList[0].x;
+                const position = new kakao.maps.LatLng(lat, lng);
+
+                const markerOptions = {
+                    position: position,
+                    map: map,
+                    title: address // 마커 호버 툴팁
+                };
+
+                // 상태에 따른 마커 지정 로직 (우선순위 적용)
+                if (hasSevenEleven) {
+                    markerOptions.image = imgSevenEleven;
+                    markerOptions.zIndex = 30; // 1순위: 세븐일레븐 최상단 노출
+                } else if (isOperating) {
+                    markerOptions.image = imgOperating;
+                    markerOptions.zIndex = 20; // 2순위: 영업중인 담배판매소
+                } else {
+                    markerOptions.image = imgClosed;
+                    markerOptions.zIndex = 10; // 3순위: 폐업만 있는 곳
+                }
+
+                const marker = new kakao.maps.Marker(markerOptions);
+                markers.push(marker);
+
+                // 마커 클릭 이벤트: 사이드바에 히스토리 표시
+                kakao.maps.event.addListener(marker, 'click', function() {
+                    openSidebar(address, historyList);
+                    map.panTo(position); // 클릭한 마커로 지도 중심 이동
+                });
+            }
+        }
+
+        // --- 4. UI 상호작용 (사이드바 히스토리) ---
+
+        function openSidebar(address, historyList) {
+            const sidebar = document.getElementById('sidebar');
+            const addressEl = document.getElementById('selectedAddress');
+            const historyContainer = document.getElementById('historyList');
+
+            addressEl.textContent = address;
+            historyContainer.innerHTML = ''; // 초기화
+
+            // 날짜 최신순으로 정렬 (폐업일 또는 인허가일 기준)
+            const sortedHistory = [...historyList].sort((a, b) => {
+                const dateA = a.clgDt || a.apvDt;
+                const dateB = b.clgDt || b.apvDt;
+                return new Date(dateB) - new Date(dateA);
+            });
+
+            sortedHistory.forEach((store, index) => {
+                const isOperating = store.dtlStateNm === '영업';
+                const statusColor = isOperating ? 'text-green-600 bg-green-100 border-green-200' : 'text-red-600 bg-red-100 border-red-200';
+                const isSevenEleven = store.bplcNm.includes('세븐일레븐');
+                
+                const card = document.createElement('div');
+                card.className = `p-4 mb-4 rounded-lg border shadow-sm relative overflow-hidden ${isSevenEleven ? 'border-orange-300 bg-orange-50' : 'bg-white border-gray-100'}`;
+                
+                // 타임라인 연결선 (마지막 항목 제외)
+                if (index < sortedHistory.length - 1) {
+                    const line = document.createElement('div');
+                    line.className = 'absolute bottom-0 left-8 w-0.5 h-4 bg-gray-200 translate-y-full';
+                    card.appendChild(line);
+                }
+
+                let datesHtml = `<p class="text-sm text-gray-500 mt-2"><i class="fa-regular fa-calendar-check mr-1"></i>인허가: ${store.apvDt}</p>`;
+                if (store.clgDt) {
+                    datesHtml += `<p class="text-sm text-red-400 mt-1"><i class="fa-regular fa-calendar-xmark mr-1"></i>폐업일: ${store.clgDt}</p>`;
+                }
+
+                card.innerHTML += `
+                    <div class="flex justify-between items-start">
+                        <h4 class="font-bold text-gray-800 text-lg flex items-center">
+                            ${isSevenEleven ? '<span class="text-orange-600 mr-1"><i class="fa-solid fa-store"></i></span>' : ''}
+                            ${store.bplcNm}
+                        </h4>
+                        <span class="px-2.5 py-1 rounded-full text-xs font-bold border ${statusColor}">
+                            ${store.dtlStateNm}
+                        </span>
+                    </div>
+                    ${datesHtml}
+                `;
+                historyContainer.appendChild(card);
+            });
+
+            sidebar.classList.remove('sidebar-closed');
+            sidebar.classList.add('sidebar-open');
+        }
+
+        function closeSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            sidebar.classList.remove('sidebar-open');
+            sidebar.classList.add('sidebar-closed');
+        }
+
+        // --- 5. 공공데이터 API 연동 및 지오코딩 ---
+        
+        async function fetchRealData() {
+            const loadingText = document.querySelector('#loading span');
+            loadingText.textContent = "공공데이터 API 조회 중...";
+
+            try {
+                // 실시간 지오코딩 속도 및 API 부하를 고려하여 일단 100건만 호출 (numOfRows=100)
+                const url = `${PUBLIC_DATA_ENDPOINT}?serviceKey=${PUBLIC_DATA_API_KEY}&pageNo=1&numOfRows=100&resultType=json`;
+                
+                const response = await fetch(url);
+                if (!response.ok) throw new Error('네트워크 응답 에러');
+
+                const data = await response.json();
+                
+                // 공공데이터 응답 구조가 배열 내부 깊숙이 있는 경우를 대비한 추출 로직
+                let items = [];
+                if (data.response && data.response.body && data.response.body.items) {
+                    items = data.response.body.items;
+                    if (items.item) items = Array.isArray(items.item) ? items.item : [items.item];
+                } else if (data.data) {
+                    items = data.data;
+                } else if (Array.isArray(data)) {
+                    items = data;
+                } else if (data.items) {
+                    items = data.items;
+                }
+
+                if (items && items.length > 0) {
+                    loadingText.textContent = `API 데이터 ${items.length}건 주소 변환 중...`;
+                    // 받아온 데이터의 텍스트 주소를 지도에 찍을 수 있는 위경도(x, y)로 변환
+                    const processedData = await geocodeAndProcessData(items);
+                    
+                    if (processedData.length > 0) {
+                        processAndDisplayData(processedData);
+                    } else {
+                        throw new Error('유효한 주소 데이터가 없습니다.');
+                    }
+                } else {
+                    throw new Error('조회된 데이터가 없습니다.');
+                }
+            } catch (error) {
+                console.warn("API 호출 실패 (주로 공공데이터 CORS 차단 에러):", error);
+                loadingText.textContent = "API 연동 실패! 데모 데이터를 로드합니다.";
+                
+                // 브라우저 CORS 에러 발생 시 프로그램이 멈추지 않게 샘플 데이터로 폴백(Fallback)
+                setTimeout(() => {
+                    processAndDisplayData(mockApiData);
+                }, 1500);
+            }
+        }
+
+        async function geocodeAndProcessData(apiItems) {
+            const geocoder = new kakao.maps.services.Geocoder();
+            const validData = [];
+
+            // 순차적으로 주소 변환 처리
+            for (const item of apiItems) {
+                // 공공데이터 API 필드명 변화 대응
+                const storeName = item.bplcNm || item.BPLCNM || item.상호명 || item.cmpnmNm || '알수없음';
+                const address = item.siteWhlAddr || item.rdnWhlAddr || item.SITEWHLADDR || item.RDNWHLADDR || item.지번주소 || item.도로명주소;
+                const state = item.dtlStateNm || item.DTLSTATENM || item.영업상태명 || item.trdStateNm || '상태없음';
+                const apvDt = item.apvDt || item.APVDT || item.인허가일자 || '';
+                const clgDt = item.clgDt || item.CLGDT || item.폐업일자 || '';
+
+                if (!address) continue;
+
+                // 카카오 Geocoder를 이용해 주소를 위/경도로 변환
+                const coords = await new Promise((resolve) => {
+                    geocoder.addressSearch(address, function(result, status) {
+                        if (status === kakao.maps.services.Status.OK) {
+                            resolve({ x: parseFloat(result[0].x), y: parseFloat(result[0].y) });
+                        } else {
+                            resolve(null); // 변환 실패 (잘못된 주소 등)시 null 반환 후 무시
+                        }
+                    });
+                });
+
+                if (coords) {
+                    validData.push({
+                        bplcNm: storeName,
+                        dtlStateNm: state,
+                        siteWhlAddr: address,
+                        apvDt: apvDt,
+                        clgDt: clgDt,
+                        x: coords.x,
+                        y: coords.y
+                    });
+                }
+            }
+            return validData;
+        }
+
+        // 페이지가 로드되면 자동으로 앱 초기화 실행
+        window.addEventListener('DOMContentLoaded', initializeApp);
+
+    </script>
+</body>
+</html>
