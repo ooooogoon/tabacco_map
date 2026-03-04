@@ -136,7 +136,7 @@
         
         // 공공데이터 API 설정
         const PUBLIC_DATA_API_KEY = 'e73f0e74186728df4cc7a0b30825e3b65e04519363781be92faa5511083d30d8';
-        const PUBLIC_DATA_ENDPOINT = 'https://apis.data.go.kr/1741000/tobacco_retailers';
+        const PUBLIC_DATA_ENDPOINT = 'https://apis.data.go.kr/1741000/tobacco_retailers/info';
 
         // --- 2. 초기화 및 스크립트 로드 ---
 
@@ -335,95 +335,60 @@
 
         // --- 5. 공공데이터 API 연동 및 지오코딩 ---
         
+        function formatDate(ymd) {
+            if (!ymd || ymd.length < 8) return ymd || '';
+            return `${ymd.slice(0,4)}-${ymd.slice(4,6)}-${ymd.slice(6,8)}`;
+        }
+
         async function fetchRealData() {
             const loadingText = document.querySelector('#loading span');
             loadingText.textContent = "공공데이터 API 조회 중...";
 
             try {
-                // 실시간 지오코딩 속도 및 API 부하를 고려하여 일단 100건만 호출 (numOfRows=100)
-                const url = `${PUBLIC_DATA_ENDPOINT}?serviceKey=${PUBLIC_DATA_API_KEY}&pageNo=1&numOfRows=100&resultType=json`;
-                
+                const url = `${PUBLIC_DATA_ENDPOINT}?serviceKey=${PUBLIC_DATA_API_KEY}&pageNo=1&numOfRows=100&returnType=json`;
+
                 const response = await fetch(url);
                 if (!response.ok) throw new Error('네트워크 응답 에러');
 
                 const data = await response.json();
-                
-                // 공공데이터 응답 구조가 배열 내부 깊숙이 있는 경우를 대비한 추출 로직
+
                 let items = [];
                 if (data.response && data.response.body && data.response.body.items) {
                     items = data.response.body.items;
                     if (items.item) items = Array.isArray(items.item) ? items.item : [items.item];
-                } else if (data.data) {
-                    items = data.data;
-                } else if (Array.isArray(data)) {
-                    items = data;
-                } else if (data.items) {
-                    items = data.items;
                 }
 
                 if (items && items.length > 0) {
-                    loadingText.textContent = `API 데이터 ${items.length}건 주소 변환 중...`;
-                    // 받아온 데이터의 텍스트 주소를 지도에 찍을 수 있는 위경도(x, y)로 변환
-                    const processedData = await geocodeAndProcessData(items);
-                    
+                    loadingText.textContent = `API 데이터 ${items.length}건 로드 중...`;
+
+                    // CRD_INFO_X/Y 좌표가 API에 이미 있으므로 지오코딩 불필요
+                    const processedData = items
+                        .filter(item => item.CRD_INFO_X && item.CRD_INFO_Y)
+                        .map(item => ({
+                            bplcNm: item.BPLC_NM || '알수없음',
+                            dtlStateNm: item.DTL_SALS_STTS_NM || item.SALS_STTS_NM || '상태없음',
+                            siteWhlAddr: item.ROAD_NM_ADDR || item.LOTNO_ADDR || '',
+                            apvDt: formatDate(item.LCPMT_YMD),
+                            clgDt: formatDate(item.CLSBIZ_YMD),
+                            x: parseFloat(item.CRD_INFO_X),
+                            y: parseFloat(item.CRD_INFO_Y)
+                        }));
+
                     if (processedData.length > 0) {
                         processAndDisplayData(processedData);
                     } else {
-                        throw new Error('유효한 주소 데이터가 없습니다.');
+                        throw new Error('좌표가 있는 데이터가 없습니다.');
                     }
                 } else {
                     throw new Error('조회된 데이터가 없습니다.');
                 }
             } catch (error) {
-                console.warn("API 호출 실패 (주로 공공데이터 CORS 차단 에러):", error);
+                console.warn("API 호출 실패:", error);
                 loadingText.textContent = "API 연동 실패! 데모 데이터를 로드합니다.";
-                
-                // 브라우저 CORS 에러 발생 시 프로그램이 멈추지 않게 샘플 데이터로 폴백(Fallback)
                 setTimeout(() => {
                     processAndDisplayData(mockApiData);
                 }, 1500);
             }
-        }
-
-        async function geocodeAndProcessData(apiItems) {
-            const geocoder = new kakao.maps.services.Geocoder();
-            const validData = [];
-
-            // 순차적으로 주소 변환 처리
-            for (const item of apiItems) {
-                // 공공데이터 API 필드명 변화 대응
-                const storeName = item.bplcNm || item.BPLCNM || item.상호명 || item.cmpnmNm || '알수없음';
-                const address = item.siteWhlAddr || item.rdnWhlAddr || item.SITEWHLADDR || item.RDNWHLADDR || item.지번주소 || item.도로명주소;
-                const state = item.dtlStateNm || item.DTLSTATENM || item.영업상태명 || item.trdStateNm || '상태없음';
-                const apvDt = item.apvDt || item.APVDT || item.인허가일자 || '';
-                const clgDt = item.clgDt || item.CLGDT || item.폐업일자 || '';
-
-                if (!address) continue;
-
-                // 카카오 Geocoder를 이용해 주소를 위/경도로 변환
-                const coords = await new Promise((resolve) => {
-                    geocoder.addressSearch(address, function(result, status) {
-                        if (status === kakao.maps.services.Status.OK) {
-                            resolve({ x: parseFloat(result[0].x), y: parseFloat(result[0].y) });
-                        } else {
-                            resolve(null); // 변환 실패 (잘못된 주소 등)시 null 반환 후 무시
-                        }
-                    });
-                });
-
-                if (coords) {
-                    validData.push({
-                        bplcNm: storeName,
-                        dtlStateNm: state,
-                        siteWhlAddr: address,
-                        apvDt: apvDt,
-                        clgDt: clgDt,
-                        x: coords.x,
-                        y: coords.y
-                    });
-                }
-            }
-            return validData;
         }
 
         // 페이지가 로드되면 자동으로 앱 초기화 실행
