@@ -281,8 +281,8 @@
             for (const address in grouped) {
                 const historyList = grouped[address];
                 
-                // 1. 세븐일레븐 이력 여부 (최우선)
-                const hasSevenEleven = historyList.some(store => store.bplcNm.includes('세븐일레븐'));
+                // 1. "세븐일레븐 XX점" 패턴 매칭 (최우선)
+                const hasSevenEleven = historyList.some(store => /^세븐일레븐\s*.+점$/.test(store.bplcNm));
                 
                 // 2. 현재 해당 주소에 '영업' 중인 담배소매업이 있는지 (폐업만 있는지 확인용)
                 const isOperating = historyList.some(store => store.dtlStateNm.includes('영업') || store.dtlStateNm.includes('정상'));
