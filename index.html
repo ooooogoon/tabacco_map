@@ -236,11 +236,22 @@
         function initMap() {
             const container = document.getElementById('map');
             const options = {
-                center: new kakao.maps.LatLng(37.5546, 126.9706), // 서울역 기본 중심
+                center: new kakao.maps.LatLng(37.5546, 126.9706),
                 level: 6
             };
             map = new kakao.maps.Map(container, options);
-            
+
+            // 현재 위치로 지도 중심 이동
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    pos => {
+                        map.setCenter(new kakao.maps.LatLng(pos.coords.latitude, pos.coords.longitude));
+                        map.setLevel(5);
+                    },
+                    () => {} // 거부하면 서울역 기본값 유지
+                );
+            }
+
             // 지도 컨트롤 추가
             const zoomControl = new kakao.maps.ZoomControl();
             map.addControl(zoomControl, kakao.maps.ControlPosition.RIGHT);
