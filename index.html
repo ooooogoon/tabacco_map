@@ -541,8 +541,8 @@
             loadingEl.classList.remove('hidden');
             loadingText.textContent = `${regionKey} 데이터 로드 중...`;
 
-            const PAGE_SIZE = 1000;
-            const MAX_PAGES = 30; // 최대 30,000건
+            const PAGE_SIZE = 100;
+            const MAX_PAGES = 300; // 최대 30,000건
             let pageNo = 1;
             let totalCount = 0;
             let loadedCount = 0;
