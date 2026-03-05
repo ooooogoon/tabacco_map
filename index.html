@@ -267,6 +267,7 @@
         }
 
         function createMarkers(grouped) {
+            console.log('[D] createMarkers 호출, 그룹 수:', Object.keys(grouped).length);
             // SVG 커스텀 마커 이미지 생성 헬퍼 함수
             const createMarkerImg = (color, iconSvg) => {
                 const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="35" viewBox="0 0 24 35"><path fill="${color}" d="M12 0C5.4 0 0 5.4 0 12c0 9 12 23 12 23s12-14 12-23c0-6.6-5.4-12-12-12z"/>${iconSvg}</svg>`;
@@ -443,6 +444,9 @@
                             needsGeocode.push(base);
                         }
                     });
+
+                    console.log('[D] withCoords:', withCoords.length, '/ needsGeocode:', needsGeocode.length);
+                    if (withCoords.length > 0) console.log('[D] 첫마커 좌표:', withCoords[0].x, withCoords[0].y);
 
                     // 좌표 있는 것 즉시 표시
                     if (withCoords.length > 0) processAndDisplayData(withCoords);
