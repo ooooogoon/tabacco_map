@@ -53,6 +53,8 @@
     </script>
     <!-- FontAwesome for Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- proj4js: 한국 TM좌표 → WGS84 변환 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
     <style>
         body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; font-family: 'Pretendard', sans-serif; }
         #map { width: 100%; height: 100%; z-index: 1; background-color: #f3f4f6; }
@@ -383,8 +385,18 @@
 
         // --- 5. 공공데이터 API 연동 및 지오코딩 ---
         
+        // 한국 TM 좌표계(EPSG:5174) 정의
+        proj4.defs("EPSG:5174", "+proj=tmerc +lat_0=38 +lon_0=127 +k=1 +x_0=200000 +y_0=500000 +ellps=bessel +towgs84=-146.43,507.89,681.46 +units=m +no_defs");
+
+        function convertToWGS84(x, y) {
+            const [lng, lat] = proj4("EPSG:5174", "WGS84", [x, y]);
+            return { x: lng, y: lat };
+        }
+
         function formatDate(ymd) {
-            if (!ymd || ymd.length < 8) return ymd || '';
+            if (!ymd) return '';
+            if (ymd.includes('-')) return ymd; // 이미 YYYY-MM-DD 형식
+            if (ymd.length < 8) return ymd;
             return `${ymd.slice(0,4)}-${ymd.slice(4,6)}-${ymd.slice(6,8)}`;
         }
 
@@ -406,11 +418,7 @@
                     if (items.item) items = Array.isArray(items.item) ? items.item : [items.item];
                 }
 
-                console.log('[DEBUG] API 응답 원본:', JSON.stringify(data).slice(0, 500));
-                console.log('[DEBUG] items 추출 결과:', items ? items.length : 'null');
-
                 if (items && items.length > 0) {
-                    console.log('[DEBUG] 첫번째 item 샘플:', JSON.stringify(items[0]));
                     loadingText.textContent = `API 데이터 ${items.length}건 로드 중...`;
 
                     const withCoords = [];
@@ -425,13 +433,12 @@
                             clgDt: formatDate(item.CLSBIZ_YMD),
                         };
                         if (item.CRD_INFO_X && item.CRD_INFO_Y) {
-                            withCoords.push({ ...base, x: parseFloat(item.CRD_INFO_X), y: parseFloat(item.CRD_INFO_Y) });
+                            const coords = convertToWGS84(parseFloat(item.CRD_INFO_X), parseFloat(item.CRD_INFO_Y));
+                            withCoords.push({ ...base, x: coords.x, y: coords.y });
                         } else if (base.siteWhlAddr) {
                             needsGeocode.push(base);
                         }
                     });
-
-                    console.log('[DEBUG] withCoords:', withCoords.length, '/ needsGeocode:', needsGeocode.length);
 
                     // 좌표 있는 것 먼저 표시
                     if (withCoords.length > 0) processAndDisplayData(withCoords);
