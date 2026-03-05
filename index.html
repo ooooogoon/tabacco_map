@@ -194,29 +194,23 @@
             document.getElementById('map').innerHTML = '<div class="text-center"><i class="fa-solid fa-map-location-dot text-4xl mb-3 text-gray-300"></i><p>카카오 지도 정책에 의해<br>미리보기가 차단되었습니다.</p></div>';
         }
 
+        let currentRegion = '';
+
         function initializeApp() {
-            // 로딩 표시
             document.getElementById('loading').classList.remove('hidden');
 
-            // 카카오 맵 스크립트 동적 로드 (https 명시, Geocoder 주소 변환을 위해 &libraries=services 추가)
             const script = document.createElement('script');
             script.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${KAKAO_API_KEY}&libraries=services&autoload=false`;
-            
+
             script.onload = () => {
                 try {
                     kakao.maps.load(() => {
                         try {
                             initMap();
-                            fetchRealData(); 
-
-                            // 지도가 정상적으로 렌더링 되었는지 1초 후 체크 (도메인 차단 시 렌더링 실패함)
                             setTimeout(() => {
                                 const mapContainer = document.getElementById('map');
-                                if(mapContainer.childElementCount === 0) {
-                                    showDomainError();
-                                }
+                                if(mapContainer.childElementCount === 0) showDomainError();
                             }, 1000);
-
                         } catch (err) {
                             showDomainError();
                         }
@@ -226,35 +220,56 @@
                 }
             };
 
-            script.onerror = () => {
-                showDomainError();
-            };
-
+            script.onerror = () => { showDomainError(); };
             document.head.appendChild(script);
         }
 
         function initMap() {
             const container = document.getElementById('map');
-            const options = {
+            map = new kakao.maps.Map(container, {
                 center: new kakao.maps.LatLng(37.5546, 126.9706),
                 level: 6
-            };
-            map = new kakao.maps.Map(container, options);
+            });
 
-            // 현재 위치로 지도 중심 이동
+            const zoomControl = new kakao.maps.ZoomControl();
+            map.addControl(zoomControl, kakao.maps.ControlPosition.RIGHT);
+
+            // 현재 위치로 초기화
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(
                     pos => {
                         map.setCenter(new kakao.maps.LatLng(pos.coords.latitude, pos.coords.longitude));
                         map.setLevel(5);
+                        detectRegionAndLoad(pos.coords.latitude, pos.coords.longitude);
                     },
-                    () => {} // 거부하면 서울역 기본값 유지
+                    () => detectRegionAndLoad(37.5546, 126.9706) // 거부시 서울 기본값
                 );
+            } else {
+                detectRegionAndLoad(37.5546, 126.9706);
             }
 
-            // 지도 컨트롤 추가
-            const zoomControl = new kakao.maps.ZoomControl();
-            map.addControl(zoomControl, kakao.maps.ControlPosition.RIGHT);
+            // 지도 이동 후 새 지역 데이터 로드
+            kakao.maps.event.addListener(map, 'idle', () => {
+                const c = map.getCenter();
+                detectRegionAndLoad(c.getLat(), c.getLng());
+            });
+        }
+
+        function detectRegionAndLoad(lat, lng) {
+            const geocoder = new kakao.maps.services.Geocoder();
+            geocoder.coord2RegionCode(lng, lat, (result, status) => {
+                if (status === kakao.maps.services.Status.OK) {
+                    // 시/도 단위로 필터 (서울특별시, 부산광역시 등)
+                    const region = result[0].region_1depth_name;
+                    fetchDataForRegion(region);
+                }
+            });
+        }
+
+        function clearMarkers() {
+            markers.forEach(m => m.setMap(null));
+            markers = [];
+            groupedData = {};
         }
 
         // --- 3. 데이터 처리 및 마커 생성 ---
@@ -285,7 +300,6 @@
         }
 
         function createMarkers(grouped) {
-            let cnt = {seven: 0, operating: 0, closed: 0};
             // SVG 커스텀 마커 이미지 생성 헬퍼 함수
             const createMarkerImg = (color, iconSvg) => {
                 const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="35" viewBox="0 0 24 35"><path fill="${color}" d="M12 0C5.4 0 0 5.4 0 12c0 9 12 23 12 23s12-14 12-23c0-6.6-5.4-12-12-12z"/>${iconSvg}</svg>`;
@@ -321,15 +335,12 @@
                 if (hasSevenEleven) {
                     markerOptions.image = imgSevenEleven;
                     markerOptions.zIndex = 30;
-                    cnt.seven++;
                 } else if (isOperating) {
                     markerOptions.image = imgOperating;
                     markerOptions.zIndex = 20;
-                    cnt.operating++;
                 } else {
                     markerOptions.image = imgClosed;
                     markerOptions.zIndex = 10;
-                    cnt.closed++;
                 }
 
                 const marker = new kakao.maps.Marker(markerOptions);
@@ -341,7 +352,6 @@
                     map.panTo(position);
                 });
             }
-            console.log('[D] 마커 분류:', cnt);
         }
 
         // --- 4. UI 상호작용 (사이드바 히스토리) ---
@@ -424,12 +434,18 @@
             return `${ymd.slice(0,4)}-${ymd.slice(4,6)}-${ymd.slice(6,8)}`;
         }
 
-        async function fetchRealData() {
+        async function fetchDataForRegion(region) {
+            if (region === currentRegion) return;
+            currentRegion = region;
+            clearMarkers();
+
+            const loadingEl = document.getElementById('loading');
             const loadingText = document.querySelector('#loading span');
-            loadingText.textContent = "공공데이터 API 조회 중...";
+            loadingEl.classList.remove('hidden');
+            loadingText.textContent = `${region} 데이터 로드 중...`;
 
             try {
-                const url = `${PUBLIC_DATA_ENDPOINT}?serviceKey=${PUBLIC_DATA_API_KEY}&pageNo=1&numOfRows=100&returnType=json`;
+                const url = `${PUBLIC_DATA_ENDPOINT}?serviceKey=${PUBLIC_DATA_API_KEY}&pageNo=1&numOfRows=100&returnType=json&cond[ROAD_NM_ADDR::LIKE]=${encodeURIComponent(region)}`;
 
                 const response = await fetch(url);
                 if (!response.ok) throw new Error('네트워크 응답 에러');
@@ -500,10 +516,7 @@
                 }
             } catch (error) {
                 console.warn("API 호출 실패:", error);
-                loadingText.textContent = "API 연동 실패! 데모 데이터를 로드합니다.";
-                setTimeout(() => {
-                    processAndDisplayData(mockApiData);
-                }, 1500);
+                loadingEl.classList.add('hidden');
             }
         }
 
