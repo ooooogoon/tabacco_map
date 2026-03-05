@@ -274,6 +274,7 @@
         }
 
         function createMarkers(grouped) {
+            let cnt = {seven: 0, operating: 0, closed: 0};
             // SVG 커스텀 마커 이미지 생성 헬퍼 함수
             const createMarkerImg = (color, iconSvg) => {
                 const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="35" viewBox="0 0 24 35"><path fill="${color}" d="M12 0C5.4 0 0 5.4 0 12c0 9 12 23 12 23s12-14 12-23c0-6.6-5.4-12-12-12z"/>${iconSvg}</svg>`;
@@ -308,13 +309,16 @@
                 // 상태에 따른 마커 지정 로직 (우선순위 적용)
                 if (hasSevenEleven) {
                     markerOptions.image = imgSevenEleven;
-                    markerOptions.zIndex = 30; // 1순위: 세븐일레븐 최상단 노출
+                    markerOptions.zIndex = 30;
+                    cnt.seven++;
                 } else if (isOperating) {
                     markerOptions.image = imgOperating;
-                    markerOptions.zIndex = 20; // 2순위: 영업중인 담배판매소
+                    markerOptions.zIndex = 20;
+                    cnt.operating++;
                 } else {
                     markerOptions.image = imgClosed;
-                    markerOptions.zIndex = 10; // 3순위: 폐업만 있는 곳
+                    markerOptions.zIndex = 10;
+                    cnt.closed++;
                 }
 
                 const marker = new kakao.maps.Marker(markerOptions);
@@ -323,9 +327,10 @@
                 // 마커 클릭 이벤트: 사이드바에 히스토리 표시
                 kakao.maps.event.addListener(marker, 'click', function() {
                     openSidebar(address, historyList);
-                    map.panTo(position); // 클릭한 마커로 지도 중심 이동
+                    map.panTo(position);
                 });
             }
+            console.log('[D] 마커 분류:', cnt);
         }
 
         // --- 4. UI 상호작용 (사이드바 히스토리) ---
