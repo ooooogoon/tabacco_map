@@ -406,7 +406,11 @@
                     if (items.item) items = Array.isArray(items.item) ? items.item : [items.item];
                 }
 
+                console.log('[DEBUG] API 응답 원본:', JSON.stringify(data).slice(0, 500));
+                console.log('[DEBUG] items 추출 결과:', items ? items.length : 'null');
+
                 if (items && items.length > 0) {
+                    console.log('[DEBUG] 첫번째 item 샘플:', JSON.stringify(items[0]));
                     loadingText.textContent = `API 데이터 ${items.length}건 로드 중...`;
 
                     const withCoords = [];
@@ -426,6 +430,8 @@
                             needsGeocode.push(base);
                         }
                     });
+
+                    console.log('[DEBUG] withCoords:', withCoords.length, '/ needsGeocode:', needsGeocode.length);
 
                     // 좌표 있는 것 먼저 표시
                     if (withCoords.length > 0) processAndDisplayData(withCoords);
