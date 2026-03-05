@@ -247,17 +247,20 @@
         // --- 3. 데이터 처리 및 마커 생성 ---
 
         function processAndDisplayData(dataList) {
-            // 주소(siteWhlAddr)를 기준으로 데이터 그룹화
-            groupedData = dataList.reduce((acc, current) => {
+            // 주소(siteWhlAddr)를 기준으로 데이터 그룹화 (기존 데이터에 누적)
+            const newGroups = {};
+            dataList.forEach(current => {
                 const address = current.siteWhlAddr;
-                if (!acc[address]) {
-                    acc[address] = [];
+                if (!address) return;
+                if (!groupedData[address]) {
+                    groupedData[address] = [];
+                    newGroups[address] = groupedData[address];
                 }
-                acc[address].push(current);
-                return acc;
-            }, {});
+                groupedData[address].push(current);
+                newGroups[address] = groupedData[address];
+            });
 
-            createMarkers(groupedData);
+            createMarkers(newGroups);
             document.getElementById('loading').classList.add('hidden');
         }
 
@@ -406,23 +409,52 @@
                 if (items && items.length > 0) {
                     loadingText.textContent = `API 데이터 ${items.length}건 로드 중...`;
 
-                    // CRD_INFO_X/Y 좌표가 API에 이미 있으므로 지오코딩 불필요
-                    const processedData = items
-                        .filter(item => item.CRD_INFO_X && item.CRD_INFO_Y)
-                        .map(item => ({
+                    const withCoords = [];
+                    const needsGeocode = [];
+
+                    items.forEach(item => {
+                        const base = {
                             bplcNm: item.BPLC_NM || '알수없음',
                             dtlStateNm: item.DTL_SALS_STTS_NM || item.SALS_STTS_NM || '상태없음',
                             siteWhlAddr: item.ROAD_NM_ADDR || item.LOTNO_ADDR || '',
                             apvDt: formatDate(item.LCPMT_YMD),
                             clgDt: formatDate(item.CLSBIZ_YMD),
-                            x: parseFloat(item.CRD_INFO_X),
-                            y: parseFloat(item.CRD_INFO_Y)
-                        }));
+                        };
+                        if (item.CRD_INFO_X && item.CRD_INFO_Y) {
+                            withCoords.push({ ...base, x: parseFloat(item.CRD_INFO_X), y: parseFloat(item.CRD_INFO_Y) });
+                        } else if (base.siteWhlAddr) {
+                            needsGeocode.push(base);
+                        }
+                    });
 
-                    if (processedData.length > 0) {
-                        processAndDisplayData(processedData);
-                    } else {
-                        throw new Error('좌표가 있는 데이터가 없습니다.');
+                    // 좌표 있는 것 먼저 표시
+                    if (withCoords.length > 0) processAndDisplayData(withCoords);
+
+                    // 좌표 없는 것은 주소로 지오코딩
+                    if (needsGeocode.length > 0) {
+                        loadingText.textContent = `주소 변환 중... (${needsGeocode.length}건)`;
+                        document.getElementById('loading').classList.remove('hidden');
+                        const geocoder = new kakao.maps.services.Geocoder();
+                        let done = 0;
+                        for (const item of needsGeocode) {
+                            await new Promise(resolve => {
+                                geocoder.addressSearch(item.siteWhlAddr, function(result, status) {
+                                    if (status === kakao.maps.services.Status.OK) {
+                                        item.x = parseFloat(result[0].x);
+                                        item.y = parseFloat(result[0].y);
+                                        processAndDisplayData([item]);
+                                    }
+                                    done++;
+                                    loadingText.textContent = `주소 변환 중... (${done}/${needsGeocode.length})`;
+                                    resolve();
+                                });
+                            });
+                        }
+                        document.getElementById('loading').classList.add('hidden');
+                    }
+
+                    if (withCoords.length === 0 && needsGeocode.length === 0) {
+                        throw new Error('표시할 데이터가 없습니다.');
                     }
                 } else {
                     throw new Error('조회된 데이터가 없습니다.');
