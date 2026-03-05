@@ -317,18 +317,29 @@
         }
 
         function createMarkers(grouped) {
-            const keys = Object.keys(grouped);
-            console.log('[D] createMarkers 그룹수:', keys.length, '/ map존재:', !!map, '/ 첫좌표:', grouped[keys[0]]?.[0]?.x, grouped[keys[0]]?.[0]?.y);
             // SVG 커스텀 마커 이미지 생성 헬퍼 함수
-            const createMarkerImg = (color, iconSvg) => {
-                const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="35" viewBox="0 0 24 35"><path fill="${color}" d="M12 0C5.4 0 0 5.4 0 12c0 9 12 23 12 23s12-14 12-23c0-6.6-5.4-12-12-12z"/>${iconSvg}</svg>`;
-                const encoded = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
-                return new kakao.maps.MarkerImage(encoded, new kakao.maps.Size(24, 35), {offset: new kakao.maps.Point(12, 35)});
+            // 카카오 기본 마커 색상 변형 (Canvas로 PNG 생성)
+            const createMarkerImg = (color) => {
+                const canvas = document.createElement('canvas');
+                canvas.width = 24; canvas.height = 35;
+                const ctx = canvas.getContext('2d');
+                ctx.beginPath();
+                ctx.arc(12, 12, 11, Math.PI, 0);
+                ctx.lineTo(19, 12);
+                ctx.bezierCurveTo(19, 22, 12, 32, 12, 32);
+                ctx.bezierCurveTo(12, 32, 5, 22, 5, 12);
+                ctx.closePath();
+                ctx.fillStyle = color;
+                ctx.fill();
+                ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+                return new kakao.maps.MarkerImage(canvas.toDataURL(), new kakao.maps.Size(24, 35), {offset: new kakao.maps.Point(12, 35)});
             };
 
-            const imgSevenEleven = createMarkerImg('#f97316', '<path fill="#fff" d="M12 6l1.8 5.5h5.8l-4.7 3.4 1.8 5.5-4.7-3.4-4.7 3.4 1.8-5.5-4.7-3.4h5.8z"/>'); // 오렌지색 별
-            const imgOperating = createMarkerImg('#3b82f6', '<circle cx="12" cy="12" r="5" fill="#fff"/>'); // 파란색 동그라미
-            const imgClosed = createMarkerImg('#9ca3af', '<rect x="7" y="10.5" width="10" height="3" fill="#fff"/>'); // 회색 빼기 기호
+            const imgSevenEleven = createMarkerImg('#f97316');
+            const imgOperating   = createMarkerImg('#3b82f6');
+            const imgClosed      = createMarkerImg('#9ca3af');
 
             for (const address in grouped) {
                 const historyList = grouped[address];
@@ -467,7 +478,6 @@
                 const regionCode = REGION_CODES[region];
                 if (!regionCode) { document.getElementById('loading').classList.add('hidden'); return; }
                 const url = `${PUBLIC_DATA_ENDPOINT}?serviceKey=${PUBLIC_DATA_API_KEY}&pageNo=1&numOfRows=100&returnType=json&cond[OPN_ATMY_GRP_CD::EQ]=${regionCode}`;
-                console.log('[D] 요청URL:', url.replace(PUBLIC_DATA_API_KEY, 'KEY'));
 
                 const response = await fetch(url);
                 if (!response.ok) throw new Error('네트워크 응답 에러');
@@ -479,7 +489,6 @@
                     items = data.response.body.items;
                     if (items.item) items = Array.isArray(items.item) ? items.item : [items.item];
                 }
-                console.log('[D] 응답 items 수:', items.length, '/ totalCount:', data.response?.body?.totalCount);
 
                 if (items && items.length > 0) {
                     loadingText.textContent = `API 데이터 ${items.length}건 로드 중...`;
@@ -506,11 +515,7 @@
                         }
                     });
 
-                    console.log('[D] withCoords:', withCoords.length, 'needsGeocode:', needsGeocode.length);
-                    if (withCoords.length > 0) {
-                        try { convertToWGS84(parseFloat(items[0].CRD_INFO_X), parseFloat(items[0].CRD_INFO_Y)); console.log('[D] 변환 OK'); } catch(e) { console.log('[D] 변환 에러:', e.message); }
-                        processAndDisplayData(withCoords);
-                    }
+                    if (withCoords.length > 0) processAndDisplayData(withCoords);
 
                     // 좌표 없는 것만 주소로 지오코딩
                     if (needsGeocode.length > 0) {
