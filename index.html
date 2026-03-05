@@ -8,9 +8,15 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         (function() {
-            const correct = 'oy12345';
+            const HASH = '8105a2e317c2cb234eb4c886040b30f658154ffede98310b4d030351bb069c31';
             const saved = sessionStorage.getItem('auth');
-            if (saved === correct) return;
+            if (saved === HASH) return;
+
+            async function sha256(str) {
+                const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+                return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
+            }
+
             document.addEventListener('DOMContentLoaded', function() {
                 const overlay = document.createElement('div');
                 overlay.id = 'authOverlay';
@@ -25,10 +31,11 @@
                     </div>`;
                 document.body.appendChild(overlay);
 
-                function tryAuth() {
+                async function tryAuth() {
                     const val = document.getElementById('pwInput').value;
-                    if (val === correct) {
-                        sessionStorage.setItem('auth', correct);
+                    const hashed = await sha256(val);
+                    if (hashed === HASH) {
+                        sessionStorage.setItem('auth', HASH);
                         overlay.remove();
                     } else {
                         document.getElementById('pwError').textContent = '비밀번호가 틀렸습니다.';
