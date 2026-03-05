@@ -506,8 +506,11 @@
                         }
                     });
 
-                    // 좌표 있는 것 즉시 표시
-                    if (withCoords.length > 0) processAndDisplayData(withCoords);
+                    console.log('[D] withCoords:', withCoords.length, 'needsGeocode:', needsGeocode.length);
+                    if (withCoords.length > 0) {
+                        try { convertToWGS84(parseFloat(items[0].CRD_INFO_X), parseFloat(items[0].CRD_INFO_Y)); console.log('[D] 변환 OK'); } catch(e) { console.log('[D] 변환 에러:', e.message); }
+                        processAndDisplayData(withCoords);
+                    }
 
                     // 좌표 없는 것만 주소로 지오코딩
                     if (needsGeocode.length > 0) {
