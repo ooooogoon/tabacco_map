@@ -196,6 +196,29 @@
 
         let currentRegion = '';
 
+        // 시/도 이름 → 개방자치단체코드(_ALL) 매핑
+        const REGION_CODES = {
+            '서울특별시': '6110000_ALL',
+            '부산광역시': '6260000_ALL',
+            '대구광역시': '6270000_ALL',
+            '인천광역시': '6280000_ALL',
+            '광주광역시': '6290000_ALL',
+            '대전광역시': '6300000_ALL',
+            '울산광역시': '6310000_ALL',
+            '세종특별자치시': '5690000_ALL',
+            '경기도':     '6410000_ALL',
+            '강원도':     '6530000_ALL',
+            '강원특별자치도': '6530000_ALL',
+            '충청북도':   '6430000_ALL',
+            '충청남도':   '6440000_ALL',
+            '전라북도':   '6540000_ALL',
+            '전북특별자치도': '6540000_ALL',
+            '전라남도':   '6460000_ALL',
+            '경상북도':   '6470000_ALL',
+            '경상남도':   '6480000_ALL',
+            '제주특별자치도': '6500000_ALL',
+        };
+
         function initializeApp() {
             document.getElementById('loading').classList.remove('hidden');
 
@@ -445,7 +468,9 @@
             loadingText.textContent = `${region} 데이터 로드 중...`;
 
             try {
-                const url = `${PUBLIC_DATA_ENDPOINT}?serviceKey=${PUBLIC_DATA_API_KEY}&pageNo=1&numOfRows=100&returnType=json&cond[ROAD_NM_ADDR::LIKE]=${encodeURIComponent(region)}`;
+                const regionCode = REGION_CODES[region];
+                if (!regionCode) { document.getElementById('loading').classList.add('hidden'); return; }
+                const url = `${PUBLIC_DATA_ENDPOINT}?serviceKey=${PUBLIC_DATA_API_KEY}&pageNo=1&numOfRows=100&returnType=json&cond[OPN_ATMY_GRP_CD::EQ]=${regionCode}`;
 
                 const response = await fetch(url);
                 if (!response.ok) throw new Error('네트워크 응답 에러');
