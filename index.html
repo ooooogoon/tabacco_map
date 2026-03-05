@@ -314,12 +314,6 @@
             createMarkers(newGroups);
             document.getElementById('loading').classList.add('hidden');
 
-            // 마커 전체가 보이도록 지도 범위 자동 조정
-            if (markers.length > 0) {
-                const bounds = new kakao.maps.LatLngBounds();
-                markers.forEach(m => bounds.extend(m.getPosition()));
-                map.setBounds(bounds);
-            }
         }
 
         function createMarkers(grouped) {
