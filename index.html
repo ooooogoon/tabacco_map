@@ -95,6 +95,11 @@
             <span class="font-medium text-gray-700">데이터를 불러오는 중입니다...</span>
         </div>
 
+        <!-- Marker Count Badge -->
+        <div id="markerCount" class="absolute top-4 right-4 bg-gray-800 text-white text-xs px-3 py-1.5 rounded-full shadow-lg z-20 hidden">
+            마커 <span id="markerCountNum">0</span>개
+        </div>
+
         <!-- Error/Notice Modal (미리보기 및 에러 안내용) -->
         <div id="errorModal" class="absolute inset-0 bg-gray-900 bg-opacity-75 z-50 flex items-center justify-center hidden">
             <div class="bg-white p-8 rounded-xl shadow-2xl max-w-md w-full text-center">
@@ -194,7 +199,9 @@
             document.getElementById('map').innerHTML = '<div class="text-center"><i class="fa-solid fa-map-location-dot text-4xl mb-3 text-gray-300"></i><p>카카오 지도 정책에 의해<br>미리보기가 차단되었습니다.</p></div>';
         }
 
-        let currentRegion = '';
+        const loadedDistricts = new Set();   // 이미 로드 완료된 구/군
+        const loadingDistricts = new Set();  // 현재 로딩 중인 구/군
+        let idleTimer = null;
 
         // 시/도 약칭 매핑 (Kakao region_1depth_name → 코드표 접두어)
         const CITY_PREFIX = {
@@ -329,10 +336,13 @@
                 detectRegionAndLoad(37.5546, 126.9706);
             }
 
-            // 지도 이동 후 새 지역 데이터 로드
+            // 지도 이동 후 새 지역 데이터 로드 (debounce 600ms)
             kakao.maps.event.addListener(map, 'idle', () => {
-                const c = map.getCenter();
-                detectRegionAndLoad(c.getLat(), c.getLng());
+                clearTimeout(idleTimer);
+                idleTimer = setTimeout(() => {
+                    const c = map.getCenter();
+                    detectRegionAndLoad(c.getLat(), c.getLng());
+                }, 600);
             });
         }
 
@@ -442,6 +452,8 @@
 
                 const marker = new kakao.maps.Marker(markerOptions);
                 markers.push(marker);
+                document.getElementById('markerCountNum').textContent = markers.length.toLocaleString();
+                document.getElementById('markerCount').classList.remove('hidden');
 
                 // 마커 클릭 이벤트: 사이드바에 히스토리 표시
                 kakao.maps.event.addListener(marker, 'click', function() {
@@ -532,14 +544,13 @@
         }
 
         async function fetchDataForDistrict(regionKey, regionCode) {
-            if (currentRegion === regionKey) return;
-            currentRegion = regionKey;
-            clearMarkers();
+            if (loadedDistricts.has(regionKey) || loadingDistricts.has(regionKey)) return;
+            loadingDistricts.add(regionKey);
 
             const loadingEl = document.getElementById('loading');
             const loadingText = document.querySelector('#loading span');
             loadingEl.classList.remove('hidden');
-            loadingText.textContent = `${regionKey} 데이터 로드 중...`;
+            loadingText.textContent = `${regionKey} 로드 중...`;
 
             const PAGE_SIZE = 100;
             const MAX_PAGES = 300; // 최대 30,000건
@@ -592,7 +603,7 @@
                     });
 
                     loadedCount += items.length;
-                    loadingText.textContent = `${regionKey} ${loadedCount.toLocaleString()}/${totalCount.toLocaleString()}건 로드 중...`;
+                    loadingText.textContent = `${regionKey} ${loadedCount.toLocaleString()}/${totalCount.toLocaleString()}건 | 마커 ${markers.length.toLocaleString()}개`;
 
                     if (withCoords.length > 0) processAndDisplayData(withCoords);
 
@@ -619,7 +630,12 @@
                 console.warn("API 호출 실패:", error);
             }
 
-            loadingEl.classList.add('hidden');
+            loadedDistricts.add(regionKey);
+            loadingDistricts.delete(regionKey);
+
+            if (loadingDistricts.size === 0) {
+                loadingEl.classList.add('hidden');
+            }
         }
 
         // 페이지가 로드되면 자동으로 앱 초기화 실행
