@@ -6,6 +6,44 @@
     <title>담배소매업 주소지 히스토리 맵</title>
     <!-- Tailwind CSS for styling -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        (function() {
+            const correct = 'oy12345';
+            const saved = sessionStorage.getItem('auth');
+            if (saved === correct) return;
+            document.addEventListener('DOMContentLoaded', function() {
+                const overlay = document.createElement('div');
+                overlay.id = 'authOverlay';
+                overlay.style.cssText = 'position:fixed;inset:0;background:#1e293b;z-index:9999;display:flex;align-items:center;justify-content:center;';
+                overlay.innerHTML = `
+                    <div style="background:white;padding:2rem;border-radius:1rem;width:320px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+                        <div style="font-size:2rem;margin-bottom:0.5rem;">🔒</div>
+                        <h2 style="font-weight:bold;font-size:1.2rem;margin-bottom:1.5rem;color:#1e293b;">비밀번호를 입력하세요</h2>
+                        <input id="pwInput" type="password" placeholder="비밀번호" style="width:100%;padding:0.6rem 1rem;border:1px solid #cbd5e1;border-radius:0.5rem;font-size:1rem;outline:none;box-sizing:border-box;" />
+                        <p id="pwError" style="color:#ef4444;font-size:0.85rem;margin-top:0.5rem;min-height:1.2rem;"></p>
+                        <button id="pwBtn" style="width:100%;margin-top:0.5rem;padding:0.6rem;background:#2563eb;color:white;border:none;border-radius:0.5rem;font-size:1rem;font-weight:bold;cursor:pointer;">확인</button>
+                    </div>`;
+                document.body.appendChild(overlay);
+
+                function tryAuth() {
+                    const val = document.getElementById('pwInput').value;
+                    if (val === correct) {
+                        sessionStorage.setItem('auth', correct);
+                        overlay.remove();
+                    } else {
+                        document.getElementById('pwError').textContent = '비밀번호가 틀렸습니다.';
+                        document.getElementById('pwInput').value = '';
+                        document.getElementById('pwInput').focus();
+                    }
+                }
+                document.getElementById('pwBtn').addEventListener('click', tryAuth);
+                document.getElementById('pwInput').addEventListener('keydown', function(e) {
+                    if (e.key === 'Enter') tryAuth();
+                });
+                document.getElementById('pwInput').focus();
+            });
+        })();
+    </script>
     <!-- FontAwesome for Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
