@@ -298,10 +298,10 @@
         // --- 3. 데이터 처리 및 마커 생성 ---
 
         function processAndDisplayData(dataList) {
-            // 주소(siteWhlAddr)를 기준으로 데이터 그룹화 (기존 데이터에 누적)
             const newGroups = {};
             dataList.forEach(current => {
-                const address = current.siteWhlAddr;
+                // 주소 없으면 좌표를 key로 사용
+                const address = current.siteWhlAddr || `${current.y?.toFixed(5)},${current.x?.toFixed(5)}`;
                 if (!address) return;
                 if (!groupedData[address]) {
                     groupedData[address] = [];
