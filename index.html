@@ -422,31 +422,33 @@
                 if (items && items.length > 0) {
                     loadingText.textContent = `API 데이터 ${items.length}건 로드 중...`;
 
-                    const withCoords = [];
-                    const needsGeocode = [];
+                    const withCoords = [];   // 주소 없고 좌표만 있는 항목 (3순위)
+                    const needsGeocode = []; // 주소로 지오코딩할 항목 (1~2순위)
 
                     items.forEach(item => {
                         const base = {
                             bplcNm: item.BPLC_NM || '알수없음',
                             dtlStateNm: item.DTL_SALS_STTS_NM || item.SALS_STTS_NM || '상태없음',
-                            siteWhlAddr: item.ROAD_NM_ADDR || item.LOTNO_ADDR || '',
                             apvDt: formatDate(item.LCPMT_YMD),
                             clgDt: formatDate(item.CLSBIZ_YMD),
                         };
-                        if (item.CRD_INFO_X && item.CRD_INFO_Y) {
+
+                        // 1순위: 도로명주소, 2순위: 지번주소
+                        const addr = item.ROAD_NM_ADDR || item.LOTNO_ADDR || '';
+                        if (addr) {
+                            needsGeocode.push({ ...base, siteWhlAddr: addr });
+                        } else if (item.CRD_INFO_X && item.CRD_INFO_Y) {
+                            // 3순위: 주소 없을 때만 TM좌표 변환 사용
                             const coords = convertToWGS84(parseFloat(item.CRD_INFO_X), parseFloat(item.CRD_INFO_Y));
-                            withCoords.push({ ...base, x: coords.x, y: coords.y });
-                        } else if (base.siteWhlAddr) {
-                            needsGeocode.push(base);
+                            withCoords.push({ ...base, siteWhlAddr: '', x: coords.x, y: coords.y });
                         }
                     });
 
-                    // 좌표 있는 것 먼저 표시
+                    // 3순위(좌표만) 즉시 표시
                     if (withCoords.length > 0) processAndDisplayData(withCoords);
 
-                    // 좌표 없는 것은 주소로 지오코딩
+                    // 1~2순위(주소) 지오코딩 후 표시
                     if (needsGeocode.length > 0) {
-                        loadingText.textContent = `주소 변환 중... (${needsGeocode.length}건)`;
                         document.getElementById('loading').classList.remove('hidden');
                         const geocoder = new kakao.maps.services.Geocoder();
                         let done = 0;
