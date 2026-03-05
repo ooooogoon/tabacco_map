@@ -465,6 +465,7 @@
                 const regionCode = REGION_CODES[region];
                 if (!regionCode) { document.getElementById('loading').classList.add('hidden'); return; }
                 const url = `${PUBLIC_DATA_ENDPOINT}?serviceKey=${PUBLIC_DATA_API_KEY}&pageNo=1&numOfRows=100&returnType=json&cond[OPN_ATMY_GRP_CD::EQ]=${regionCode}`;
+                console.log('[D] 요청URL:', url.replace(PUBLIC_DATA_API_KEY, 'KEY'));
 
                 const response = await fetch(url);
                 if (!response.ok) throw new Error('네트워크 응답 에러');
@@ -476,6 +477,7 @@
                     items = data.response.body.items;
                     if (items.item) items = Array.isArray(items.item) ? items.item : [items.item];
                 }
+                console.log('[D] 응답 items 수:', items.length, '/ totalCount:', data.response?.body?.totalCount);
 
                 if (items && items.length > 0) {
                     loadingText.textContent = `API 데이터 ${items.length}건 로드 중...`;
