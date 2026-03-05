@@ -379,8 +379,8 @@
         function processAndDisplayData(dataList) {
             const newGroups = {};
             dataList.forEach(current => {
-                // 주소 없으면 좌표를 key로 사용
-                const address = current.siteWhlAddr || `${current.y?.toFixed(5)},${current.x?.toFixed(5)}`;
+                // 주소 정규화 후 key로 사용 (괄호·층·호 제거 → 같은 건물끼리 묶임)
+                const address = normalizeAddress(current.siteWhlAddr) || `${current.y?.toFixed(5)},${current.x?.toFixed(5)}`;
                 if (!address) return;
                 if (!groupedData[address]) {
                     groupedData[address] = [];
@@ -534,6 +534,21 @@
         function convertToWGS84(x, y) {
             const [lng, lat] = proj4("EPSG:5174", "WGS84", [x, y]);
             return { x: lng, y: lat };
+        }
+
+        // 주소 정규화: 괄호 제거 + 층/호/실 등 상세 단위 제거
+        function normalizeAddress(addr) {
+            if (!addr) return addr;
+            // 1. 괄호 및 내용 제거: "(가산동)", "(주)" 등
+            let s = addr.replace(/\s*\([^)]*\)/g, '').trim();
+            // 2. 끝에 붙는 상세 단위 반복 제거 (여러 번 적용)
+            const unitPattern = /\s+\S*(호|층|실|번지)$/;
+            for (let i = 0; i < 3; i++) {
+                s = s.replace(unitPattern, '').trim();
+            }
+            // 3. "101동" 같은 동 번호도 제거
+            s = s.replace(/\s+\d+동$/, '').trim();
+            return s;
         }
 
         function formatDate(ymd) {
