@@ -349,23 +349,39 @@
 
         function detectRegionAndLoad(lat, lng) {
             const geocoder = new kakao.maps.services.Geocoder();
+            let districtKey = null, districtCode = null, roadName = null;
+            let regionDone = false, addrDone = false;
+
+            function tryFetch() {
+                if (!regionDone || !addrDone) return;
+                if (!districtCode) return;
+                if (roadName) {
+                    // 도로명 단위로 검색 (훨씬 적은 데이터)
+                    fetchDataForRoad(`${districtKey}|${roadName}`, districtCode, roadName);
+                } else {
+                    fetchDataForDistrict(districtKey, districtCode);
+                }
+            }
+
             geocoder.coord2RegionCode(lng, lat, (result, status) => {
                 if (status === kakao.maps.services.Status.OK) {
-                    const region1 = result[0].region_1depth_name; // 서울특별시
-                    const region2 = result[0].region_2depth_name; // 강남구
-
+                    const region1 = result[0].region_1depth_name;
+                    const region2 = result[0].region_2depth_name;
                     const prefix = CITY_PREFIX[region1] || '';
-                    const districtKey = prefix + region2; // 서울강남구
-                    const districtCode = DISTRICT_CODES[districtKey];
-
-                    if (districtCode) {
-                        fetchDataForDistrict(districtKey, districtCode);
-                    } else {
-                        // 구/군 코드 없으면 시 전체 코드로 fallback
-                        const cityCode = CITY_CODES[region1];
-                        if (cityCode) fetchDataForDistrict(region1, cityCode);
-                    }
+                    districtKey = prefix + region2;
+                    districtCode = DISTRICT_CODES[districtKey] || CITY_CODES[region1] || null;
+                    if (!DISTRICT_CODES[districtKey]) districtKey = region1;
                 }
+                regionDone = true;
+                tryFetch();
+            });
+
+            geocoder.coord2Address(lng, lat, (result, status) => {
+                if (status === kakao.maps.services.Status.OK && result[0]?.road_address) {
+                    roadName = result[0].road_address.road_name || null;
+                }
+                addrDone = true;
+                tryFetch();
             });
         }
 
@@ -416,7 +432,8 @@
                 if (markerCache[address]) continue; // 이미 등록됨
                 const historyList = grouped[address];
                 const hasSevenEleven = historyList.some(s => /^세븐일레븐\s*.+점$/.test(s.bplcNm));
-                const isOperating = historyList.some(s => s.dtlStateNm.includes('영업') || s.dtlStateNm.includes('정상'));
+                // 영업 판단: 인허가일 있고 폐업일 없으면 = 영업중
+                const isOperating = historyList.some(s => s.apvDt && !s.clgDt);
                 const position = new kakao.maps.LatLng(historyList[0].y, historyList[0].x);
 
                 const marker = new kakao.maps.Marker({
@@ -470,13 +487,15 @@
             });
 
             sortedHistory.forEach((store, index) => {
-                const isOperating = store.dtlStateNm === '영업';
+                // 영업 판단: 인허가일 있고 폐업일 없으면 = 영업중
+                const isOperating = store.apvDt && !store.clgDt;
+                const statusLabel = isOperating ? '영업중' : (store.clgDt ? '폐업' : store.dtlStateNm);
                 const statusColor = isOperating ? 'text-green-600 bg-green-100 border-green-200' : 'text-red-600 bg-red-100 border-red-200';
                 const isSevenEleven = store.bplcNm.includes('세븐일레븐');
-                
+
                 const card = document.createElement('div');
                 card.className = `p-4 mb-4 rounded-lg border shadow-sm relative overflow-hidden ${isSevenEleven ? 'border-orange-300 bg-orange-50' : 'bg-white border-gray-100'}`;
-                
+
                 // 타임라인 연결선 (마지막 항목 제외)
                 if (index < sortedHistory.length - 1) {
                     const line = document.createElement('div');
@@ -484,10 +503,12 @@
                     card.appendChild(line);
                 }
 
-                let datesHtml = `<p class="text-sm text-gray-500 mt-2"><i class="fa-regular fa-calendar-check mr-1"></i>인허가: ${store.apvDt}</p>`;
-                if (store.clgDt) {
-                    datesHtml += `<p class="text-sm text-red-400 mt-1"><i class="fa-regular fa-calendar-xmark mr-1"></i>폐업일: ${store.clgDt}</p>`;
-                }
+                const apvHtml = store.apvDt
+                    ? `<p class="text-sm text-gray-500 mt-2"><i class="fa-regular fa-calendar-check mr-1"></i>인허가: ${store.apvDt}</p>`
+                    : '';
+                const clgHtml = store.clgDt
+                    ? `<p class="text-sm text-red-400 mt-1"><i class="fa-regular fa-calendar-xmark mr-1"></i>폐업일: ${store.clgDt}</p>`
+                    : (!isOperating && store.dtlStateNm ? `<p class="text-sm text-gray-400 mt-1"><i class="fa-regular fa-calendar-xmark mr-1"></i>폐업일: 날짜 없음</p>` : '');
 
                 card.innerHTML += `
                     <div class="flex justify-between items-start">
@@ -496,10 +517,10 @@
                             ${store.bplcNm}
                         </h4>
                         <span class="px-2.5 py-1 rounded-full text-xs font-bold border ${statusColor}">
-                            ${store.dtlStateNm}
+                            ${statusLabel}
                         </span>
                     </div>
-                    ${datesHtml}
+                    ${apvHtml}${clgHtml}
                 `;
                 historyContainer.appendChild(card);
             });
@@ -640,6 +661,97 @@
             if (loadingDistricts.size === 0) {
                 loadingEl.classList.add('hidden');
             }
+        }
+
+        // 도로명 단위 데이터 로드 (화면에 보이는 도로만)
+        async function fetchDataForRoad(cacheKey, districtCode, roadName) {
+            if (loadedDistricts.has(cacheKey) || loadingDistricts.has(cacheKey)) return;
+            loadingDistricts.add(cacheKey);
+
+            const loadingEl = document.getElementById('loading');
+            const loadingText = document.querySelector('#loading span');
+            loadingEl.classList.remove('hidden');
+            loadingText.textContent = `${roadName} 검색 중...`;
+
+            const PAGE_SIZE = 100;
+            let pageNo = 1, totalCount = 0, loadedCount = 0;
+
+            try {
+                while (true) {
+                    const url = `${PUBLIC_DATA_ENDPOINT}?serviceKey=${PUBLIC_DATA_API_KEY}&pageNo=${pageNo}&numOfRows=${PAGE_SIZE}&returnType=json` +
+                        `&cond[OPN_ATMY_GRP_CD::EQ]=${districtCode}&cond[ROAD_NM_ADDR::LK]=${encodeURIComponent(roadName)}`;
+
+                    const response = await fetch(url);
+                    if (!response.ok) throw new Error('네트워크 응답 에러');
+                    const data = await response.json();
+
+                    if (pageNo === 1) {
+                        totalCount = parseInt(data.response?.body?.totalCount || 0);
+                        loadingText.textContent = `${roadName} 총 ${totalCount}건 로드 중...`;
+                        // LK 필터 미지원 시 fallback: 구 단위로 전환
+                        if (totalCount === 0) {
+                            loadingDistricts.delete(cacheKey);
+                            loadingEl.classList.add('hidden');
+                            return;
+                        }
+                    }
+
+                    let items = [];
+                    if (data.response?.body?.items) {
+                        const raw = data.response.body.items;
+                        items = raw.item ? (Array.isArray(raw.item) ? raw.item : [raw.item]) : [];
+                    }
+                    if (!items.length) break;
+
+                    const withCoords = [], needsGeocode = [];
+                    items.forEach(item => {
+                        const base = {
+                            bplcNm: item.BPLC_NM || '알수없음',
+                            dtlStateNm: item.DTL_SALS_STTS_NM || item.SALS_STTS_NM || '',
+                            siteWhlAddr: item.ROAD_NM_ADDR || item.LOTNO_ADDR || '',
+                            apvDt: formatDate(item.LCPMT_YMD),
+                            clgDt: formatDate(item.CLSBIZ_YMD),
+                        };
+                        const cx = parseFloat(item.CRD_INFO_X);
+                        const cy = parseFloat(item.CRD_INFO_Y);
+                        if (item.CRD_INFO_X && item.CRD_INFO_Y && isFinite(cx) && isFinite(cy)) {
+                            const coords = convertToWGS84(cx, cy);
+                            withCoords.push({ ...base, x: coords.x, y: coords.y });
+                        } else if (base.siteWhlAddr) {
+                            needsGeocode.push(base);
+                        }
+                    });
+
+                    loadedCount += items.length;
+                    loadingText.textContent = `${roadName} ${loadedCount}/${totalCount}건`;
+                    if (withCoords.length > 0) processAndDisplayData(withCoords);
+
+                    if (needsGeocode.length > 0) {
+                        const geocoder = new kakao.maps.services.Geocoder();
+                        for (const item of needsGeocode) {
+                            await new Promise(resolve => {
+                                geocoder.addressSearch(item.siteWhlAddr, (result, status) => {
+                                    if (status === kakao.maps.services.Status.OK) {
+                                        item.x = parseFloat(result[0].x);
+                                        item.y = parseFloat(result[0].y);
+                                        processAndDisplayData([item]);
+                                    }
+                                    resolve();
+                                });
+                            });
+                        }
+                    }
+
+                    if (loadedCount >= totalCount || items.length < PAGE_SIZE) break;
+                    pageNo++;
+                }
+            } catch (error) {
+                console.warn("도로명 API 호출 실패:", error);
+            }
+
+            loadedDistricts.add(cacheKey);
+            loadingDistricts.delete(cacheKey);
+            if (loadingDistricts.size === 0) loadingEl.classList.add('hidden');
         }
 
         // 페이지가 로드되면 자동으로 앱 초기화 실행
