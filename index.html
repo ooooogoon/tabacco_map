@@ -536,9 +536,41 @@
         }
 
         // --- 5. 공공데이터 API 연동 및 지오코딩 ---
-        
-        // 한국 TM 좌표계(EPSG:5174) 정의
-        // 보정계수 안들어간 Bessel 중부원점TM (API 명세 기준)
+
+        // 상호명 정제: 법인 표기 제거, 편의점 운영사명 → 브랜드명
+        function cleanBusinessName(name) {
+            if (!name) return name;
+            let s = name;
+            s = s.replace(/^(주식회사|유한회사)\s*/g, '');
+            s = s.replace(/(\(주\)|㈜|\(유\))\s*/g, '');
+            s = s.replace(/코리아세븐\s*/gi, '세븐일레븐 ');
+            s = s.replace(/BGF리테일\s*/gi, 'CU ');
+            s = s.replace(/GS리테일\s*(GS25\s*)?/gi, 'GS25 ');
+            s = s.replace(/이마트에브리데이\s*/gi, '이마트24 ');
+            return s.trim().replace(/\s+/g, ' ') || name;
+        }
+
+        // 지오코딩 캐시 (동일 주소 중복 호출 방지)
+        const geocodeCache = {};
+
+        // 카카오 주소 지오코딩 (건물 단위 정확도)
+        function geocodeAddress(geocoder, address) {
+            const key = normalizeAddress(address);
+            if (geocodeCache[key]) return Promise.resolve(geocodeCache[key]);
+            return new Promise(resolve => {
+                geocoder.addressSearch(address, (result, status) => {
+                    if (status === kakao.maps.services.Status.OK && result[0]) {
+                        const coords = { x: parseFloat(result[0].x), y: parseFloat(result[0].y) };
+                        geocodeCache[key] = coords;
+                        resolve(coords);
+                    } else {
+                        resolve(null);
+                    }
+                });
+            });
+        }
+
+        // 한국 TM 좌표계(EPSG:5174) - 주소 없는 레코드용 폴백
         proj4.defs("EPSG:5174", "+proj=tmerc +lat_0=38 +lon_0=127 +k=1 +x_0=200000 +y_0=500000 +ellps=bessel +towgs84=-146.43,507.89,681.46,0,0,0,0 +units=m +no_defs");
 
         function convertToWGS84(x, y) {
@@ -605,48 +637,9 @@
 
                     if (!items.length) break;
 
-                    const withCoords = [];
-                    const needsGeocode = [];
-
-                    items.forEach(item => {
-                        const base = {
-                            bplcNm: item.BPLC_NM || '알수없음',
-                            dtlStateNm: item.DTL_SALS_STTS_NM || item.SALS_STTS_NM || '상태없음',
-                            siteWhlAddr: item.ROAD_NM_ADDR || item.LOTNO_ADDR || '',
-                            apvDt: formatDate(item.LCPMT_YMD),
-                            clgDt: formatDate(item.CLSBIZ_YMD),
-                        };
-
-                        const cx = parseFloat(item.CRD_INFO_X);
-                        const cy = parseFloat(item.CRD_INFO_Y);
-                        if (item.CRD_INFO_X && item.CRD_INFO_Y && isFinite(cx) && isFinite(cy)) {
-                            const coords = convertToWGS84(cx, cy);
-                            withCoords.push({ ...base, x: coords.x, y: coords.y });
-                        } else if (base.siteWhlAddr) {
-                            needsGeocode.push(base);
-                        }
-                    });
-
                     loadedCount += items.length;
                     loadingText.textContent = `${regionKey} ${loadedCount.toLocaleString()}/${totalCount.toLocaleString()}건 로드 중...`;
-
-                    if (withCoords.length > 0) processAndDisplayData(withCoords);
-
-                    if (needsGeocode.length > 0) {
-                        const geocoder = new kakao.maps.services.Geocoder();
-                        for (const item of needsGeocode) {
-                            await new Promise(resolve => {
-                                geocoder.addressSearch(item.siteWhlAddr, function(result, status) {
-                                    if (status === kakao.maps.services.Status.OK) {
-                                        item.x = parseFloat(result[0].x);
-                                        item.y = parseFloat(result[0].y);
-                                        processAndDisplayData([item]);
-                                    }
-                                    resolve();
-                                });
-                            });
-                        }
-                    }
+                    await processItems(items, loadingText, regionKey, loadedCount, totalCount);
 
                     if (loadedCount >= totalCount || items.length < PAGE_SIZE) break;
                     pageNo++;
@@ -657,9 +650,50 @@
 
             loadedDistricts.add(regionKey);
             loadingDistricts.delete(regionKey);
+            if (loadingDistricts.size === 0) loadingEl.classList.add('hidden');
+        }
 
-            if (loadingDistricts.size === 0) {
-                loadingEl.classList.add('hidden');
+        // 아이템 파싱 공통 함수: 지오코딩 우선, TM 좌표는 폴백
+        async function processItems(items, loadingText, label, loaded, total) {
+            const geocoder = new kakao.maps.services.Geocoder();
+            const toGeocode = []; // 주소로 지오코딩할 항목
+            const tmFallback = []; // 주소 없어서 TM 좌표만 있는 항목
+
+            items.forEach(item => {
+                const base = {
+                    bplcNm: cleanBusinessName(item.BPLC_NM || '알수없음'),
+                    dtlStateNm: item.DTL_SALS_STTS_NM || item.SALS_STTS_NM || '',
+                    siteWhlAddr: item.ROAD_NM_ADDR || item.LOTNO_ADDR || '',
+                    apvDt: formatDate(item.LCPMT_YMD),
+                    clgDt: formatDate(item.CLSBIZ_YMD),
+                };
+
+                if (base.siteWhlAddr) {
+                    // 주소 있으면 카카오 지오코딩 (정확도 높음)
+                    toGeocode.push(base);
+                } else {
+                    // 주소 없을 때만 TM 좌표 폴백
+                    const cx = parseFloat(item.CRD_INFO_X);
+                    const cy = parseFloat(item.CRD_INFO_Y);
+                    if (isFinite(cx) && isFinite(cy)) {
+                        const coords = convertToWGS84(cx, cy);
+                        tmFallback.push({ ...base, x: coords.x, y: coords.y });
+                    }
+                }
+            });
+
+            if (tmFallback.length > 0) processAndDisplayData(tmFallback);
+
+            let done = 0;
+            for (const item of toGeocode) {
+                const coords = await geocodeAddress(geocoder, item.siteWhlAddr);
+                if (coords) {
+                    processAndDisplayData([{ ...item, x: coords.x, y: coords.y }]);
+                }
+                done++;
+                if (done % 10 === 0) {
+                    loadingText.textContent = `${label} 지오코딩 ${done}/${toGeocode.length}건...`;
+                }
             }
         }
 
@@ -703,44 +737,9 @@
                     }
                     if (!items.length) break;
 
-                    const withCoords = [], needsGeocode = [];
-                    items.forEach(item => {
-                        const base = {
-                            bplcNm: item.BPLC_NM || '알수없음',
-                            dtlStateNm: item.DTL_SALS_STTS_NM || item.SALS_STTS_NM || '',
-                            siteWhlAddr: item.ROAD_NM_ADDR || item.LOTNO_ADDR || '',
-                            apvDt: formatDate(item.LCPMT_YMD),
-                            clgDt: formatDate(item.CLSBIZ_YMD),
-                        };
-                        const cx = parseFloat(item.CRD_INFO_X);
-                        const cy = parseFloat(item.CRD_INFO_Y);
-                        if (item.CRD_INFO_X && item.CRD_INFO_Y && isFinite(cx) && isFinite(cy)) {
-                            const coords = convertToWGS84(cx, cy);
-                            withCoords.push({ ...base, x: coords.x, y: coords.y });
-                        } else if (base.siteWhlAddr) {
-                            needsGeocode.push(base);
-                        }
-                    });
-
                     loadedCount += items.length;
                     loadingText.textContent = `${roadName} ${loadedCount}/${totalCount}건`;
-                    if (withCoords.length > 0) processAndDisplayData(withCoords);
-
-                    if (needsGeocode.length > 0) {
-                        const geocoder = new kakao.maps.services.Geocoder();
-                        for (const item of needsGeocode) {
-                            await new Promise(resolve => {
-                                geocoder.addressSearch(item.siteWhlAddr, (result, status) => {
-                                    if (status === kakao.maps.services.Status.OK) {
-                                        item.x = parseFloat(result[0].x);
-                                        item.y = parseFloat(result[0].y);
-                                        processAndDisplayData([item]);
-                                    }
-                                    resolve();
-                                });
-                            });
-                        }
-                    }
+                    await processItems(items, loadingText, roadName, loadedCount, totalCount);
 
                     if (loadedCount >= totalCount || items.length < PAGE_SIZE) break;
                     pageNo++;
