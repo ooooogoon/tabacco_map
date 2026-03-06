@@ -180,7 +180,7 @@
         ];
 
         let map;
-        let markers = [];
+        const markerCache = {}; // address → kakao.maps.Marker (숨김 상태로 등록)
         let groupedData = {};
         
         // 직접 입력해주신 카카오 JavaScript API 키
@@ -316,7 +316,7 @@
             const container = document.getElementById('map');
             map = new kakao.maps.Map(container, {
                 center: new kakao.maps.LatLng(37.5546, 126.9706),
-                level: 6
+                level: 3
             });
 
             const zoomControl = new kakao.maps.ZoomControl();
@@ -327,7 +327,7 @@
                 navigator.geolocation.getCurrentPosition(
                     pos => {
                         map.setCenter(new kakao.maps.LatLng(pos.coords.latitude, pos.coords.longitude));
-                        map.setLevel(5);
+                        map.setLevel(3);
                         detectRegionAndLoad(pos.coords.latitude, pos.coords.longitude);
                     },
                     () => detectRegionAndLoad(37.5546, 126.9706) // 거부시 서울 기본값
@@ -336,12 +336,13 @@
                 detectRegionAndLoad(37.5546, 126.9706);
             }
 
-            // 지도 이동 후 새 지역 데이터 로드 (debounce 600ms)
+            // 지도 이동 후: 새 구/군 데이터 로드 + 화면 마커 갱신
             kakao.maps.event.addListener(map, 'idle', () => {
                 clearTimeout(idleTimer);
                 idleTimer = setTimeout(() => {
                     const c = map.getCenter();
                     detectRegionAndLoad(c.getLat(), c.getLng());
+                    refreshVisibleMarkers();
                 }, 600);
             });
         }
@@ -368,18 +369,34 @@
             });
         }
 
-        function clearMarkers() {
-            markers.forEach(m => m.setMap(null));
-            markers = [];
-            groupedData = {};
-        }
-
         // --- 3. 데이터 처리 및 마커 생성 ---
+
+        // 마커 이미지 (한 번만 생성)
+        let imgSevenEleven, imgOperating, imgClosed;
+        function getMarkerImgs() {
+            if (imgSevenEleven) return;
+            const mk = (color) => {
+                const c = document.createElement('canvas');
+                c.width = 24; c.height = 35;
+                const ctx = c.getContext('2d');
+                ctx.beginPath();
+                ctx.arc(12, 12, 11, Math.PI, 0);
+                ctx.lineTo(19, 12);
+                ctx.bezierCurveTo(19, 22, 12, 32, 12, 32);
+                ctx.bezierCurveTo(12, 32, 5, 22, 5, 12);
+                ctx.closePath();
+                ctx.fillStyle = color; ctx.fill();
+                ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.lineWidth = 1; ctx.stroke();
+                return new kakao.maps.MarkerImage(c.toDataURL(), new kakao.maps.Size(24, 35), {offset: new kakao.maps.Point(12, 35)});
+            };
+            imgSevenEleven = mk('#f97316');
+            imgOperating   = mk('#3b82f6');
+            imgClosed      = mk('#9ca3af');
+        }
 
         function processAndDisplayData(dataList) {
             const newGroups = {};
             dataList.forEach(current => {
-                // 주소 정규화 후 key로 사용 (괄호·층·호 제거 → 같은 건물끼리 묶임)
                 const address = normalizeAddress(current.siteWhlAddr) || `${current.y?.toFixed(5)},${current.x?.toFixed(5)}`;
                 if (!address) return;
                 if (!groupedData[address]) {
@@ -389,78 +406,50 @@
                 groupedData[address].push(current);
                 newGroups[address] = groupedData[address];
             });
-
-            createMarkers(newGroups);
+            registerMarkers(newGroups);
+            refreshVisibleMarkers();
         }
 
-        function createMarkers(grouped) {
-            // SVG 커스텀 마커 이미지 생성 헬퍼 함수
-            // 카카오 기본 마커 색상 변형 (Canvas로 PNG 생성)
-            const createMarkerImg = (color) => {
-                const canvas = document.createElement('canvas');
-                canvas.width = 24; canvas.height = 35;
-                const ctx = canvas.getContext('2d');
-                ctx.beginPath();
-                ctx.arc(12, 12, 11, Math.PI, 0);
-                ctx.lineTo(19, 12);
-                ctx.bezierCurveTo(19, 22, 12, 32, 12, 32);
-                ctx.bezierCurveTo(12, 32, 5, 22, 5, 12);
-                ctx.closePath();
-                ctx.fillStyle = color;
-                ctx.fill();
-                ctx.strokeStyle = 'rgba(0,0,0,0.3)';
-                ctx.lineWidth = 1;
-                ctx.stroke();
-                return new kakao.maps.MarkerImage(canvas.toDataURL(), new kakao.maps.Size(24, 35), {offset: new kakao.maps.Point(12, 35)});
-            };
-
-            const imgSevenEleven = createMarkerImg('#f97316');
-            const imgOperating   = createMarkerImg('#3b82f6');
-            const imgClosed      = createMarkerImg('#9ca3af');
-
+        function registerMarkers(grouped) {
+            getMarkerImgs();
             for (const address in grouped) {
+                if (markerCache[address]) continue; // 이미 등록됨
                 const historyList = grouped[address];
-                
-                // 1. "세븐일레븐 XX점" 패턴 매칭 (최우선)
-                const hasSevenEleven = historyList.some(store => /^세븐일레븐\s*.+점$/.test(store.bplcNm));
-                
-                // 2. 현재 해당 주소에 '영업' 중인 담배소매업이 있는지 (폐업만 있는지 확인용)
-                const isOperating = historyList.some(store => store.dtlStateNm.includes('영업') || store.dtlStateNm.includes('정상'));
-                
-                // 좌표는 그룹 내 첫 번째 데이터의 좌표를 사용
-                const lat = historyList[0].y;
-                const lng = historyList[0].x;
-                const position = new kakao.maps.LatLng(lat, lng);
+                const hasSevenEleven = historyList.some(s => /^세븐일레븐\s*.+점$/.test(s.bplcNm));
+                const isOperating = historyList.some(s => s.dtlStateNm.includes('영업') || s.dtlStateNm.includes('정상'));
+                const position = new kakao.maps.LatLng(historyList[0].y, historyList[0].x);
 
-                const markerOptions = {
-                    position: position,
-                    map: map,
-                    title: address // 마커 호버 툴팁
-                };
-
-                // 상태에 따른 마커 지정 로직 (우선순위 적용)
-                if (hasSevenEleven) {
-                    markerOptions.image = imgSevenEleven;
-                    markerOptions.zIndex = 30;
-                } else if (isOperating) {
-                    markerOptions.image = imgOperating;
-                    markerOptions.zIndex = 20;
-                } else {
-                    markerOptions.image = imgClosed;
-                    markerOptions.zIndex = 10;
-                }
-
-                const marker = new kakao.maps.Marker(markerOptions);
-                markers.push(marker);
-                document.getElementById('markerCountNum').textContent = markers.length.toLocaleString();
-                document.getElementById('markerCount').classList.remove('hidden');
-
-                // 마커 클릭 이벤트: 사이드바에 히스토리 표시
+                const marker = new kakao.maps.Marker({
+                    position,
+                    map: null, // 처음엔 숨김 - refreshVisibleMarkers에서 표시
+                    title: address,
+                    image: hasSevenEleven ? imgSevenEleven : isOperating ? imgOperating : imgClosed,
+                    zIndex: hasSevenEleven ? 30 : isOperating ? 20 : 10,
+                });
+                markerCache[address] = marker;
                 kakao.maps.event.addListener(marker, 'click', function() {
                     openSidebar(address, historyList);
                     map.panTo(position);
                 });
             }
+        }
+
+        // 현재 화면에 보이는 마커만 표시
+        function refreshVisibleMarkers() {
+            if (!map) return;
+            const bounds = map.getBounds();
+            const sw = bounds.getSouthWest();
+            const ne = bounds.getNorthEast();
+            let visCount = 0;
+            for (const marker of Object.values(markerCache)) {
+                const pos = marker.getPosition();
+                const inView = pos.getLat() >= sw.getLat() && pos.getLat() <= ne.getLat() &&
+                               pos.getLng() >= sw.getLng() && pos.getLng() <= ne.getLng();
+                marker.setMap(inView ? map : null);
+                if (inView) visCount++;
+            }
+            document.getElementById('markerCountNum').textContent = visCount.toLocaleString();
+            document.getElementById('markerCount').classList.toggle('hidden', visCount === 0);
         }
 
         // --- 4. UI 상호작용 (사이드바 히스토리) ---
@@ -618,7 +607,7 @@
                     });
 
                     loadedCount += items.length;
-                    loadingText.textContent = `${regionKey} ${loadedCount.toLocaleString()}/${totalCount.toLocaleString()}건 | 마커 ${markers.length.toLocaleString()}개`;
+                    loadingText.textContent = `${regionKey} ${loadedCount.toLocaleString()}/${totalCount.toLocaleString()}건 로드 중...`;
 
                     if (withCoords.length > 0) processAndDisplayData(withCoords);
 
