@@ -539,7 +539,7 @@
         
         // 한국 TM 좌표계(EPSG:5174) 정의
         // 보정계수 안들어간 Bessel 중부원점TM (API 명세 기준)
-        proj4.defs("EPSG:5174", "+proj=tmerc +lat_0=38 +lon_0=127 +k=1 +x_0=200000 +y_0=500000 +ellps=bessel +units=m +no_defs");
+        proj4.defs("EPSG:5174", "+proj=tmerc +lat_0=38 +lon_0=127 +k=1 +x_0=200000 +y_0=500000 +ellps=bessel +towgs84=-146.43,507.89,681.46,0,0,0,0 +units=m +no_defs");
 
         function convertToWGS84(x, y) {
             const [lng, lat] = proj4("EPSG:5174", "WGS84", [x, y]);
