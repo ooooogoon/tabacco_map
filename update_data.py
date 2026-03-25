@@ -14,11 +14,26 @@ tm_proj = pyproj.Proj('+proj=tmerc +lat_0=38 +lon_0=127 +k=1 +x_0=200000 +y_0=50
 wgs84_proj = pyproj.Proj('epsg:4326')
 transformer = pyproj.Transformer.from_proj(tm_proj, wgs84_proj, always_xy=True)
 
-# 서울 일부 자치구 (빠른 데모 렌더링을 위해 테스트 3개 구만)
-SEOUL_DISTRICTS = {
-    '서울중구':'3010000',
-    '서울용산구':'3020000', 
-    '서울강남구':'3220000'
+# 서울, 경기, 인천 자치구
+TARGET_DISTRICTS = {
+    '서울종로구':'3000000', '서울중구':'3010000', '서울용산구':'3020000', '서울성동구':'3030000',
+    '서울광진구':'3040000', '서울동대문구':'3050000', '서울중랑구':'3060000', '서울성북구':'3070000',
+    '서울강북구':'3080000', '서울도봉구':'3090000', '서울노원구':'3100000', '서울은평구':'3110000',
+    '서울서대문구':'3120000', '서울마포구':'3130000', '서울양천구':'3140000', '서울강서구':'3150000',
+    '서울구로구':'3160000', '서울금천구':'3170000', '서울영등포구':'3180000', '서울동작구':'3190000',
+    '서울관악구':'3200000', '서울서초구':'3210000', '서울강남구':'3220000', '서울송파구':'3230000',
+    '서울강동구':'3240000',
+    '인천중구':'3490000', '인천동구':'3500000', '인천미추홀구':'3510500', '인천연수구':'3520000',
+    '인천남동구':'3530000', '인천부평구':'3540000', '인천계양구':'3550000', '인천서구':'3560000',
+    '인천강화군':'3570000', '인천옹진군':'3580000',
+    '경기수원시':'3740000', '경기성남시':'3780000', '경기의정부시':'3820000', '경기안양시':'3830000',
+    '경기부천시':'3860000', '경기광명시':'3900000', '경기평택시':'3910000', '경기동두천시':'3920000',
+    '경기안산시':'3930000', '경기고양시':'3940000', '경기과천시':'3970000', '경기구리시':'3980000',
+    '경기남양주시':'3990000', '경기오산시':'4000000', '경기시흥시':'4010000', '경기군포시':'4020000',
+    '경기의왕시':'4030000', '경기하남시':'4040000', '경기용인시':'4050000', '경기파주시':'4060000',
+    '경기이천시':'4070000', '경기안성시':'4080000', '경기김포시':'4090000', '경기양평군':'4170000',
+    '경기연천군':'4140000', '경기가평군':'4160000', '경기광주시':'5540000', '경기화성시':'5530000',
+    '경기양주시':'5590000', '경기포천시':'5600000', '경기여주시':'5700000'
 }
 
 def clean_business_name(name):
@@ -34,24 +49,16 @@ def clean_business_name(name):
     return ' '.join(s.split()) or name
 
 def geocode_kakao(address):
-    try:
-        headers = {'Authorization': f'KakaoAK {KAKAO_API_KEY}'}
-        res = requests.get('https://dapi.kakao.com/v2/local/search/address.json', params={'query': address}, headers=headers, timeout=5)
-        if res.status_code == 200:
-            docs = res.json().get('documents', [])
-            if docs:
-                return float(docs[0]['x']), float(docs[0]['y'])
-    except:
-        pass
+    # 속도 저하의 주원인으로, 카카오 지오코딩 폴백은 완전히 비활성화합니다.
     return None, None
 
 def main():
     all_data = []
     total_fetched = 0
     
-    print(f"Starting ETL Process for {len(SEOUL_DISTRICTS)} districts...")
+    print(f"Starting ETL Process for {len(TARGET_DISTRICTS)} districts...")
     
-    for district_name, code in SEOUL_DISTRICTS.items():
+    for district_name, code in TARGET_DISTRICTS.items():
         page = 1
         loaded = 0
         total = 0
@@ -135,7 +142,7 @@ def main():
         'fetchDate': fetch_date,
         'apiUpdateDate': now.strftime('%Y-%m-%d'), # 보통 행안부 API는 전일 혹은 당일 새벽 기준
         'totalCount': len(all_data),
-        'region': '서울시 전역'
+        'region': '수도권 (서울/경기/인천)'
     }
     
     # Save to data.json
