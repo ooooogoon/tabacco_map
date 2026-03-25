@@ -61,11 +61,19 @@
         
         /* Sidebar Styles */
         #sidebar {
-            transition: transform 0.3s ease-in-out;
-            z-index: 10;
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            z-index: 30; /* 맵 컨트롤, 마커 위로 */
         }
-        .sidebar-closed { transform: translateX(100%); }
-        .sidebar-open { transform: translateX(0); }
+        /* Mobile: Bottom Sheet */
+        @media (max-width: 767px) {
+            .sidebar-closed { transform: translateY(100%); }
+            .sidebar-open { transform: translateY(0); }
+        }
+        /* Desktop: Right Sidebar */
+        @media (min-width: 768px) {
+            .sidebar-closed { transform: translateX(100%); }
+            .sidebar-open { transform: translateX(0); }
+        }
 
         /* Custom Scrollbar */
         ::-webkit-scrollbar { width: 8px; }
@@ -97,7 +105,7 @@
 
         <!-- Marker Count Badge -->
         <div id="markerCount" class="absolute top-4 right-4 bg-gray-800 text-white text-xs px-3 py-1.5 rounded-full shadow-lg z-20 hidden">
-            마커 <span id="markerCountNum">0</span>개
+            현재 화면 <span id="markerCountNum" class="font-bold text-blue-300">0</span>건
         </div>
 
         <!-- Error/Notice Modal (미리보기 및 에러 안내용) -->
@@ -115,51 +123,56 @@
             <!-- 지도가 로드되지 않았을 때 표시될 텍스트 -->
         </div>
 
-        <!-- History Sidebar -->
-        <div id="sidebar" class="absolute top-0 right-0 w-96 h-full bg-white shadow-2xl sidebar-closed flex flex-col border-l border-gray-200">
-            <div class="bg-gray-800 text-white p-5 flex justify-between items-center">
-                <h2 class="text-lg font-bold"><i class="fa-solid fa-clock-rotate-left mr-2"></i>주소지 인허가 히스토리</h2>
-                <button onclick="closeSidebar()" class="text-gray-300 hover:text-white transition text-xl">
+        <!-- History Sidebar (Bottom Sheet on Mobile, Sidebar on Desktop) -->
+        <div id="sidebar" class="absolute bottom-0 w-full h-[55%] md:top-0 md:right-0 md:bottom-auto md:w-96 md:h-full bg-white shadow-2xl sidebar-closed flex flex-col border-t md:border-t-0 md:border-l border-gray-200 rounded-t-2xl md:rounded-none">
+            <div class="bg-gray-800 text-white p-4 md:p-5 flex justify-between items-center rounded-t-2xl md:rounded-none">
+                <h2 class="text-base md:text-lg font-bold"><i class="fa-solid fa-clock-rotate-left mr-2"></i>주소지 인허가 히스토리</h2>
+                <button onclick="closeSidebar()" class="text-gray-300 hover:text-white transition text-xl p-2 -mr-2">
                     <i class="fa-solid fa-times"></i>
                 </button>
             </div>
             
-            <div class="p-5 bg-gray-50 border-b border-gray-200">
-                <div class="text-sm text-gray-500 mb-1">선택된 주소</div>
-                <div id="selectedAddress" class="font-bold text-gray-800 text-lg">주소를 선택해주세요</div>
+            <div class="p-4 md:p-5 bg-gray-50 border-b border-gray-200 flex-shrink-0">
+                <div class="text-xs md:text-sm text-gray-500 mb-1">선택된 주소</div>
+                <div id="selectedAddress" class="font-bold text-gray-800 text-base md:text-lg break-keep">주소를 선택해주세요</div>
             </div>
 
-            <div id="historyList" class="flex-grow p-5 overflow-y-auto bg-white">
+            <div id="historyList" class="flex-grow p-4 md:p-5 overflow-y-auto bg-white pb-safe">
                 <!-- History items will be injected here -->
                 <div class="text-center text-gray-400 mt-10">
                     <i class="fa-solid fa-hand-pointer text-4xl mb-3"></i>
-                    <p>지도에서 마커를 클릭하여<br>해당 주소지의 이력을 확인하세요.</p>
+                    <p class="text-sm md:text-base">지도에서 마커를 클릭하여<br>해당 주소지의 이력을 확인하세요.</p>
                 </div>
             </div>
         </div>
         
         <!-- Legend (Map Control) -->
-        <div class="absolute bottom-6 left-6 bg-white p-4 rounded-lg shadow-lg z-10 border border-gray-200">
-            <h3 class="font-bold text-sm text-gray-800 mb-3 border-b pb-2">범례</h3>
-            <div class="flex items-center mb-2">
-                <div class="w-5 h-7 mr-2 flex justify-center items-center">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="29" viewBox="0 0 24 35"><path fill="#f97316" d="M12 0C5.4 0 0 5.4 0 12c0 9 12 23 12 23s12-14 12-23c0-6.6-5.4-12-12-12z"/><path fill="#fff" d="M12 6l1.8 5.5h5.8l-4.7 3.4 1.8 5.5-4.7-3.4-4.7 3.4 1.8-5.5-4.7-3.4h5.8z"/></svg>
+        <div class="absolute bottom-6 left-4 md:left-6 bg-white p-3 md:p-4 rounded-xl shadow-lg z-10 border border-gray-200">
+            <h3 class="font-bold text-xs md:text-sm text-gray-800 mb-2 border-b pb-1.5">범례</h3>
+            <div class="flex items-center mb-1.5">
+                <div class="w-4 h-6 md:w-5 md:h-7 mr-2 flex justify-center items-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="24" viewBox="0 0 24 35"><path fill="#f97316" d="M12 0C5.4 0 0 5.4 0 12c0 9 12 23 12 23s12-14 12-23c0-6.6-5.4-12-12-12z"/><path fill="#fff" d="M12 6l1.8 5.5h5.8l-4.7 3.4 1.8 5.5-4.7-3.4-4.7 3.4 1.8-5.5-4.7-3.4h5.8z"/></svg>
                 </div>
-                <span class="text-sm text-gray-700 font-bold text-orange-600">세븐일레븐</span>
+                <span class="text-xs md:text-sm text-gray-700 font-bold text-orange-600">세븐일레븐</span>
             </div>
-            <div class="flex items-center mb-2">
-                <div class="w-5 h-7 mr-2 flex justify-center items-center">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="29" viewBox="0 0 24 35"><path fill="#3b82f6" d="M12 0C5.4 0 0 5.4 0 12c0 9 12 23 12 23s12-14 12-23c0-6.6-5.4-12-12-12z"/><circle cx="12" cy="12" r="5" fill="#fff"/></svg>
+            <div class="flex items-center mb-1.5">
+                <div class="w-4 h-6 md:w-5 md:h-7 mr-2 flex justify-center items-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="24" viewBox="0 0 24 35"><path fill="#3b82f6" d="M12 0C5.4 0 0 5.4 0 12c0 9 12 23 12 23s12-14 12-23c0-6.6-5.4-12-12-12z"/><circle cx="12" cy="12" r="5" fill="#fff"/></svg>
                 </div>
-                <span class="text-sm text-gray-700 font-medium text-blue-600">담배 판매소(영업중)</span>
+                <span class="text-xs md:text-sm text-gray-700 font-medium text-blue-600">담배 판매소(영업중)</span>
             </div>
             <div class="flex items-center">
-                <div class="w-5 h-7 mr-2 flex justify-center items-center">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="29" viewBox="0 0 24 35"><path fill="#9ca3af" d="M12 0C5.4 0 0 5.4 0 12c0 9 12 23 12 23s12-14 12-23c0-6.6-5.4-12-12-12z"/><rect x="7" y="10.5" width="10" height="3" fill="#fff"/></svg>
+                <div class="w-4 h-6 md:w-5 md:h-7 mr-2 flex justify-center items-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="24" viewBox="0 0 24 35"><path fill="#9ca3af" d="M12 0C5.4 0 0 5.4 0 12c0 9 12 23 12 23s12-14 12-23c0-6.6-5.4-12-12-12z"/><rect x="7" y="10.5" width="10" height="3" fill="#fff"/></svg>
                 </div>
-                <span class="text-sm text-gray-500">담배 판매소(폐업)</span>
+                <span class="text-xs md:text-sm text-gray-500">담배 판매소(폐업)</span>
             </div>
         </div>
+
+        <!-- My Location Button (FAB) -->
+        <button onclick="moveToMyLocation()" class="absolute bottom-6 right-4 md:bottom-6 md:right-6 bg-white w-12 h-12 md:w-14 md:h-14 rounded-full shadow-2xl border border-gray-200 text-gray-700 hover:text-blue-600 hover:bg-gray-50 transition flex items-center justify-center z-10 group" aria-label="내 위치">
+            <i class="fa-solid fa-crosshairs text-xl group-active:text-blue-600"></i>
+        </button>
     </div>
 
     <script>
@@ -180,6 +193,7 @@
         ];
 
         let map;
+        let clusterer;
         const markerCache = {}; // address → kakao.maps.Marker (숨김 상태로 등록)
         let groupedData = {};
         
@@ -288,7 +302,7 @@
             document.getElementById('loading').classList.remove('hidden');
 
             const script = document.createElement('script');
-            script.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${KAKAO_API_KEY}&libraries=services&autoload=false`;
+            script.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${KAKAO_API_KEY}&libraries=services,clusterer&autoload=false`;
 
             script.onload = () => {
                 try {
@@ -312,15 +326,50 @@
             document.head.appendChild(script);
         }
 
+        function moveToMyLocation() {
+            if (navigator.geolocation) {
+                const loadingEl = document.getElementById('loading');
+                const loadingText = document.querySelector('#loading span');
+                loadingEl.classList.remove('hidden');
+                loadingText.textContent = '위치 찾는 중...';
+
+                navigator.geolocation.getCurrentPosition(
+                    pos => {
+                        const latlng = new kakao.maps.LatLng(pos.coords.latitude, pos.coords.longitude);
+                        map.panTo(latlng);
+                        loadingEl.classList.add('hidden');
+                    },
+                    () => {
+                        loadingEl.classList.add('hidden');
+                        alert('위치 권한이 차단되었거나 찾을 수 없습니다.');
+                    },
+                    { timeout: 5000, enableHighAccuracy: true }
+                );
+            } else {
+                alert('현재 브라우저에서는 위치 기능을 지원하지 않습니다.');
+            }
+        }
+
         function initMap() {
             const container = document.getElementById('map');
             map = new kakao.maps.Map(container, {
                 center: new kakao.maps.LatLng(37.5546, 126.9706),
-                level: 1
+                level: 3
             });
 
             const zoomControl = new kakao.maps.ZoomControl();
             map.addControl(zoomControl, kakao.maps.ControlPosition.RIGHT);
+
+            clusterer = new kakao.maps.MarkerClusterer({
+                map: map,
+                averageCenter: true,
+                minLevel: 5,
+                disableClickZoom: false
+            });
+
+            kakao.maps.event.addListener(map, 'click', function() {
+                closeSidebar();
+            });
 
             // 현재 위치로 초기화
             if (navigator.geolocation) {
@@ -428,6 +477,7 @@
 
         function registerMarkers(grouped) {
             getMarkerImgs();
+            const newMarkers = [];
             for (const address in grouped) {
                 if (markerCache[address]) continue; // 이미 등록됨
                 const historyList = grouped[address];
@@ -438,20 +488,24 @@
 
                 const marker = new kakao.maps.Marker({
                     position,
-                    map: null, // 처음엔 숨김 - refreshVisibleMarkers에서 표시
                     title: address,
                     image: hasSevenEleven ? imgSevenEleven : isOperating ? imgOperating : imgClosed,
                     zIndex: hasSevenEleven ? 30 : isOperating ? 20 : 10,
                 });
                 markerCache[address] = marker;
+                newMarkers.push(marker);
+                
                 kakao.maps.event.addListener(marker, 'click', function() {
                     openSidebar(address, historyList);
-                    map.panTo(position);
+                    map.panTo(position); // 클릭 시 해당 마커로 맵 이동
                 });
+            }
+            if (newMarkers.length > 0) {
+                clusterer.addMarkers(newMarkers);
             }
         }
 
-        // 현재 화면에 보이는 마커만 표시
+        // 현재 화면에 보이는 마커 개수 갱신 (마커 표시는 클러스터러가 담당)
         function refreshVisibleMarkers() {
             if (!map) return;
             const bounds = map.getBounds();
@@ -462,11 +516,12 @@
                 const pos = marker.getPosition();
                 const inView = pos.getLat() >= sw.getLat() && pos.getLat() <= ne.getLat() &&
                                pos.getLng() >= sw.getLng() && pos.getLng() <= ne.getLng();
-                marker.setMap(inView ? map : null);
                 if (inView) visCount++;
             }
-            document.getElementById('markerCountNum').textContent = visCount.toLocaleString();
-            document.getElementById('markerCount').classList.toggle('hidden', visCount === 0);
+            const countNumEl = document.getElementById('markerCountNum');
+            if (countNumEl) countNumEl.textContent = visCount.toLocaleString();
+            const countEl = document.getElementById('markerCount');
+            if (countEl) countEl.classList.toggle('hidden', visCount === 0);
         }
 
         // --- 4. UI 상호작용 (사이드바 히스토리) ---
