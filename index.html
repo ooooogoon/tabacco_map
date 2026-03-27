@@ -81,6 +81,27 @@
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
         ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 
+        /* My Location Dot */
+        .my-loc-wrap { position: relative; width: 22px; height: 22px; }
+        .my-loc-dot {
+            width: 14px; height: 14px;
+            background: #2563eb; border: 2.5px solid #fff; border-radius: 50%;
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+            box-shadow: 0 1px 5px rgba(0,0,0,0.35);
+            z-index: 1;
+        }
+        .my-loc-pulse {
+            width: 22px; height: 22px;
+            background: rgba(37,99,235,0.22);
+            border-radius: 50%;
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+            animation: myLocPulse 2s ease-out infinite;
+        }
+        @keyframes myLocPulse {
+            0%   { transform: translate(-50%,-50%) scale(0.5); opacity: 1; }
+            100% { transform: translate(-50%,-50%) scale(2.8); opacity: 0; }
+        }
+
         /* Search */
         #searchResults::-webkit-scrollbar { width: 6px; }
         #searchResults mark { background: #fef08a; color: #854d0e; border-radius: 2px; }
@@ -210,6 +231,7 @@
     <script>
         let map;
         let clusterer;
+        let myLocationOverlay = null;
         const markerCache = {}; // address → kakao.maps.Marker (숨김 상태로 등록)
         let groupedData = {};
         
@@ -263,6 +285,7 @@
                     pos => {
                         const latlng = new kakao.maps.LatLng(pos.coords.latitude, pos.coords.longitude);
                         map.panTo(latlng);
+                        showMyLocation(pos.coords.latitude, pos.coords.longitude);
                         loadingEl.classList.add('hidden');
                     },
                     () => {
@@ -304,6 +327,7 @@
                     pos => {
                         map.setCenter(new kakao.maps.LatLng(pos.coords.latitude, pos.coords.longitude));
                         map.setLevel(4);
+                        showMyLocation(pos.coords.latitude, pos.coords.longitude);
                     },
                     () => {} // 거부시 서울 기본값
                 );
@@ -526,7 +550,25 @@
 
 
 
-        // --- 6. 검색 기능 ---
+        // --- 6. 내 위치 표시 ---
+
+        function showMyLocation(lat, lng) {
+            const pos = new kakao.maps.LatLng(lat, lng);
+            if (myLocationOverlay) {
+                myLocationOverlay.setPosition(pos);
+            } else {
+                myLocationOverlay = new kakao.maps.CustomOverlay({
+                    position: pos,
+                    content: '<div class="my-loc-wrap"><div class="my-loc-pulse"></div><div class="my-loc-dot"></div></div>',
+                    zIndex: 15,
+                    yAnchor: 0.5,
+                    xAnchor: 0.5
+                });
+                myLocationOverlay.setMap(map);
+            }
+        }
+
+        // --- 7. 검색 기능 ---
 
         let searchIndex = [];   // [{addr, names, x, y, isOperating, hasSevenEleven}]
         let searchTimer = null;
