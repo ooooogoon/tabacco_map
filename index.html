@@ -81,6 +81,12 @@
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
         ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 
+        /* Search */
+        #searchResults::-webkit-scrollbar { width: 6px; }
+        #searchResults mark { background: #fef08a; color: #854d0e; border-radius: 2px; }
+        .search-item:hover { background: #f8fafc; }
+        .search-item.active { background: #eff6ff; }
+
         /* Loader */
         .loader {
             border: 4px solid #f3f3f3;
@@ -103,8 +109,27 @@
             <span class="font-medium text-gray-700">데이터를 불러오는 중입니다...</span>
         </div>
 
+        <!-- Search Box -->
+        <div id="searchBox" class="absolute top-4 left-1/2 -translate-x-1/2 z-20 w-[calc(100%-2rem)] max-w-sm md:max-w-md">
+            <div class="relative">
+                <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 text-sm pointer-events-none"></i>
+                <input id="searchInput" type="text" placeholder="주소 또는 상호명 검색..." autocomplete="off"
+                       oninput="onSearchInput(event)"
+                       onkeydown="onSearchKeydown(event)"
+                       class="w-full pl-10 pr-10 py-2.5 bg-white rounded-full shadow-lg border border-gray-200 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition placeholder-gray-400">
+                <button id="searchClear" onclick="clearSearch()"
+                        class="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition hidden">
+                    <i class="fa-solid fa-xmark text-sm"></i>
+                </button>
+            </div>
+            <div id="searchResults"
+                 class="absolute top-full left-0 right-0 mt-1.5 bg-white rounded-2xl shadow-xl border border-gray-100 hidden overflow-hidden">
+                <div class="overflow-y-auto max-h-64"></div>
+            </div>
+        </div>
+
         <!-- Marker Count Badge -->
-        <div id="markerCount" class="absolute top-4 right-4 bg-gray-800 text-white text-xs px-3 py-1.5 rounded-full shadow-lg z-20 hidden">
+        <div id="markerCount" class="absolute top-16 right-4 md:top-4 bg-gray-800 text-white text-xs px-3 py-1.5 rounded-full shadow-lg z-20 hidden">
             현재 화면 <span id="markerCountNum" class="font-bold text-blue-300">0</span>건
         </div>
 
@@ -270,6 +295,7 @@
 
             kakao.maps.event.addListener(map, 'click', function() {
                 closeSidebar();
+                hideSearchResults();
             });
 
             // 현재 위치로 초기화
@@ -328,8 +354,10 @@
                     });
                 });
                 
+                groupedData = newGroups;
                 registerMarkers(newGroups);
                 refreshVisibleMarkers();
+                buildSearchIndex();
                 
                 document.getElementById('loading').classList.add('hidden');
             } catch (error) {
@@ -497,6 +525,141 @@
         // --- 5. 공공데이터 API 연동 및 지오코딩 ---
 
 
+
+        // --- 6. 검색 기능 ---
+
+        let searchIndex = [];   // [{addr, names, x, y, isOperating, hasSevenEleven}]
+        let searchTimer = null;
+        let searchActiveIdx = -1;
+
+        function buildSearchIndex() {
+            searchIndex = Object.entries(groupedData).map(([addr, stores]) => {
+                const names = [...new Set(stores.map(s => s.bplcNm).filter(Boolean))];
+                return {
+                    addr,
+                    names,
+                    x: stores[0].x,
+                    y: stores[0].y,
+                    isOperating: stores.some(s => s.apvDt && !s.clgDt),
+                    hasSevenEleven: stores.some(s => /^세븐일레븐\s*.+점$/.test(s.bplcNm))
+                };
+            });
+        }
+
+        function onSearchInput(e) {
+            const q = e.target.value.trim();
+            document.getElementById('searchClear').classList.toggle('hidden', !q);
+            searchActiveIdx = -1;
+            clearTimeout(searchTimer);
+            if (!q) { hideSearchResults(); return; }
+            searchTimer = setTimeout(() => doSearch(q), 180);
+        }
+
+        function onSearchKeydown(e) {
+            const resultsEl = document.getElementById('searchResults');
+            const items = resultsEl.querySelectorAll('.search-item');
+            if (!items.length) {
+                if (e.key === 'Escape') clearSearch();
+                return;
+            }
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                searchActiveIdx = Math.min(searchActiveIdx + 1, items.length - 1);
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                searchActiveIdx = Math.max(searchActiveIdx - 1, -1);
+            } else if (e.key === 'Enter' && searchActiveIdx >= 0) {
+                e.preventDefault();
+                items[searchActiveIdx].click();
+                return;
+            } else if (e.key === 'Escape') {
+                clearSearch(); return;
+            } else { return; }
+            items.forEach((el, i) => el.classList.toggle('active', i === searchActiveIdx));
+            if (searchActiveIdx >= 0) items[searchActiveIdx].scrollIntoView({ block: 'nearest' });
+        }
+
+        function doSearch(q) {
+            const lower = q.toLowerCase();
+            const results = [];
+            for (const item of searchIndex) {
+                if (results.length >= 10) break;
+                if (item.addr.toLowerCase().includes(lower) ||
+                    item.names.some(n => n.toLowerCase().includes(lower))) {
+                    results.push(item);
+                }
+            }
+            renderSearchResults(results, q);
+        }
+
+        function hlText(text, q) {
+            if (!q || !text) return text || '';
+            const idx = text.toLowerCase().indexOf(q.toLowerCase());
+            if (idx < 0) return text;
+            return text.slice(0, idx)
+                + '<mark>' + text.slice(idx, idx + q.length) + '</mark>'
+                + text.slice(idx + q.length);
+        }
+
+        function renderSearchResults(results, q) {
+            const resultsEl = document.getElementById('searchResults');
+            const inner = resultsEl.querySelector('.overflow-y-auto');
+            if (!results.length) {
+                inner.innerHTML = '<div class="px-4 py-3 text-sm text-gray-400 text-center">검색 결과 없음</div>';
+                resultsEl.classList.remove('hidden');
+                return;
+            }
+            inner.innerHTML = results.map((r, i) => {
+                const dot = r.hasSevenEleven
+                    ? '<span class="w-2.5 h-2.5 rounded-full bg-orange-400 flex-shrink-0 mt-1.5"></span>'
+                    : r.isOperating
+                        ? '<span class="w-2.5 h-2.5 rounded-full bg-blue-400 flex-shrink-0 mt-1.5"></span>'
+                        : '<span class="w-2.5 h-2.5 rounded-full bg-gray-300 flex-shrink-0 mt-1.5"></span>';
+                const nameStr = r.names.slice(0, 2).join(', ');
+                const addrShort = r.addr.replace(/^(서울특별시|경기도|인천광역시)\s+/, '');
+                return `<button class="search-item w-full text-left px-4 py-2.5 flex items-start gap-2.5 border-b border-gray-50 last:border-0"
+                                 onclick="selectSearchResult('${r.addr.replace(/\\/g,'\\\\').replace(/'/g,'\\\'')}')" >
+                    ${dot}
+                    <div class="min-w-0 flex-1">
+                        <div class="text-sm font-medium text-gray-800 truncate">${hlText(nameStr || addrShort, q)}</div>
+                        <div class="text-xs text-gray-400 truncate mt-0.5">${hlText(addrShort, q)}</div>
+                    </div>
+                    <i class="fa-solid fa-arrow-right text-gray-300 text-xs mt-1.5 flex-shrink-0"></i>
+                </button>`;
+            }).join('');
+            resultsEl.classList.remove('hidden');
+            searchActiveIdx = -1;
+        }
+
+        function selectSearchResult(addr) {
+            hideSearchResults();
+            document.getElementById('searchInput').value = '';
+            document.getElementById('searchClear').classList.add('hidden');
+            const item = searchIndex.find(i => i.addr === addr);
+            if (!item || !map) return;
+            map.setLevel(3);
+            map.panTo(new kakao.maps.LatLng(item.y, item.x));
+            const histList = groupedData[addr];
+            if (histList) openSidebar(addr, histList);
+        }
+
+        function hideSearchResults() {
+            document.getElementById('searchResults').classList.add('hidden');
+            searchActiveIdx = -1;
+        }
+
+        function clearSearch() {
+            document.getElementById('searchInput').value = '';
+            document.getElementById('searchClear').classList.add('hidden');
+            hideSearchResults();
+        }
+
+        // 검색창 바깥 클릭 시 닫기
+        document.addEventListener('click', function(e) {
+            if (!document.getElementById('searchBox').contains(e.target)) {
+                hideSearchResults();
+            }
+        });
 
         // 페이지가 로드되면 자동으로 앱 초기화 실행
         window.addEventListener('DOMContentLoaded', initializeApp);
