@@ -9,10 +9,8 @@ API_KEY = 'e73f0e74186728df4cc7a0b30825e3b65e04519363781be92faa5511083d30d8'
 URL = 'https://apis.data.go.kr/1741000/tobacco_retailers/info'
 KAKAO_API_KEY = '21792ed90da16b4da6ab0d8978b26cd1' # JS key (might not work with REST, but let's try fallback)
 
-# 중부원점(TM) -> WGS84 변환기 (proj4: EPSG:5174)
-tm_proj = pyproj.Proj('+proj=tmerc +lat_0=38 +lon_0=127 +k=1 +x_0=200000 +y_0=500000 +ellps=bessel +towgs84=-146.43,507.89,681.46,0,0,0,0 +units=m +no_defs')
-wgs84_proj = pyproj.Proj('epsg:4326')
-transformer = pyproj.Transformer.from_proj(tm_proj, wgs84_proj, always_xy=True)
+# 중부원점(TM) -> WGS84 변환기 (공식 EPSG:5174, lon_0=127.002890277778)
+transformer = pyproj.Transformer.from_crs('EPSG:5174', 'EPSG:4326', always_xy=True)
 
 # 서울, 경기, 인천 자치구
 TARGET_DISTRICTS = {
